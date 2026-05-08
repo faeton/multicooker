@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+build/
+dist/
+.DS_Store
+
+# Live cooks live here. Templates are tracked, runs are not.
+cooks/

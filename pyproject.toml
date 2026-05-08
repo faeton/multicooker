@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "multivarka"
+version = "0.1.0"
+description = "Run several LLM agents on the same task in parallel sandboxes, then judge them."
+requires-python = ">=3.10"
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+multivarka = "multivarka.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["multivarka*"]
+
+[tool.setuptools.package-data]
+"multivarka" = ["../templates/**/*"]
