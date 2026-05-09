@@ -132,6 +132,10 @@ def snapshot(cook_dir: Path, flavors: list[str]) -> Path:
                     _snapshot_claude_macos(auth_root)
                 else:
                     _snapshot_claude_linux(auth_root)
+            elif f == "dummy":
+                # Dummy flavor needs no creds — used for integration smoke
+                # tests without burning subscription credits.
+                pass
             else:
                 errors.append(f"unknown flavor: {f}")
         except CredsError as e:

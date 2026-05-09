@@ -93,6 +93,9 @@ def _auth_volumes(flavor: str, cook_dir: Path) -> list[str]:
         # Mount the whole .gemini snapshot RW; creds are re-snapshotted each cook
         # so transient writes don't leak into the host's ~/.gemini.
         return [f"{auth}/gemini/:/home/node/.gemini/:rw"]
+    if flavor == "dummy":
+        # Smoke-test flavor — no creds, no auth mount.
+        return []
     raise ValueError(f"unknown flavor: {flavor}")
 
 

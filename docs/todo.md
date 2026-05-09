@@ -19,9 +19,11 @@
     input нет flavor names);
   - [ ] unit для `report` (агрегация, missing/invalid scores,
     total=0).
-- [ ] Integration smoke без реальных LLM CLI: `dummy` flavor с
-  Dockerfile, который просто `cat PROMPT.txt > out/RESULT.md`.
-  Тогда CI проверяет cook→judge→report end-to-end без auth.
+- [x] Integration smoke без реальных LLM CLI: `dummy` flavor готов
+  (`templates/cook/participants/dummy/`, alpine-based, no auth).
+  Один entrypoint покрывает participant- и judge-режимы (branch
+  на `MULTIVARKA_JUDGE`). Полный `new→cook→judge→report` цикл
+  отрабатывает за ~10 секунд без подписочных кредов.
 - [ ] Packaging:
   - [ ] перенести templates внутрь `multivarka/templates/`;
   - [ ] `pip install dist/*.whl && multivarka new smoke` smoke;
