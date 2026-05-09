@@ -50,3 +50,14 @@ jobs:
           "$tmpvenv/bin/multivarka" new install-smoke \
               --participants a=dummy --root "$tmpvenv/cooks"
           test -f "$tmpvenv/cooks/"*"-install-smoke/participants/dummy/Dockerfile"
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # gitleaks scans full history
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

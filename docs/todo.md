@@ -26,28 +26,26 @@
 - [x] CI: GitHub Actions (`.github/workflows/ci.yml`): ruff
   (E9+F), pytest на 3.10/3.12, wheel build, smoke install.
   Secret scan — пока не добавлен (отдельный пункт ниже).
-- [ ] CI: gitleaks/trufflehog для secret scan.
+- [x] CI: gitleaks для secret scan (отдельный job в `.github/workflows/ci.yml`).
 
 ## Приоритет 2 — перед публикацией
 
-- [ ] LICENSE (MIT или Apache-2.0).
-- [ ] CONTRIBUTING.md, SECURITY.md.
-- [ ] Переписать README вокруг одного first-run сценария:
-  `doctor → new → cook → judge → report` с docker как единственным
-  режимом.
-- [ ] Синхронизировать HOWTO.md с реальностью:
-  - выпилить упоминания `~/.multivarka/auth.env` и API-ключей
-    (line ~284 — наследие host-mode);
-  - выпилить host-mode инструкции;
-  - добавить refine-режим в основной flow.
-- [ ] `docs/security.md`: threat model, что защищает Docker, что
+- [x] LICENSE — MIT.
+- [x] CONTRIBUTING.md (направление + dev loop + flavor extension).
+- [x] SECURITY.md (контакт + scope + out-of-scope).
+- [x] README переписан вокруг docker-only first-run:
+  `doctor → new → cook → judge → report` + refine-петля + multi-flavor.
+- [x] HOWTO.md синхронизирован: выпилены упоминания
+  `~/.multivarka/auth.env` / API-ключей / host_runner; добавлен
+  раздел про refine; раздел "Host-mode vs Docker-mode" заменён на
+  "Docker-mode (единственный)".
+- [x] `docs/security.md` — threat model: что защищает Docker, что
   не защищено, как обращаться с raw/ и creds.
-- [ ] `examples/hello-task` — sanitized пример, который запускается
-  без приватных материалов и без LLM (через dummy flavor).
-- [ ] Описать lifecycle артефактов: `work/`, `logs/`, `judging/`,
-  `rounds/`, `RUN_RESULT.json`, `REFINE_*.json`, cleanup через
-  `clean`.
-- [ ] Проверить git history secret scanner'ом (gitleaks/trufflehog).
+- [x] `examples/hello-task` теперь на dummy flavor — гоняется без
+  LLM-кредов; добавлены `JUDGE_BRIEF.md` и `examples/hello-task/README.md`.
+- [x] `docs/lifecycle.md` — что создаёт каждый шаг, что безопасно
+  удалить, что чинит `clean`.
+- [x] Git history secret scan (gitleaks) висит в CI.
 
 ## Auth + creds
 

@@ -13,7 +13,7 @@
 4. [Что происходит в `multivarka cook`](#что-происходит-в-multivarka-cook)
 5. [Что происходит в `multivarka judge`](#что-происходит-в-multivarka-judge)
 6. [Правила (которые легко нарушить)](#правила-которые-легко-нарушить)
-7. [Host-mode vs Docker-mode](#host-mode-vs-docker-mode)
+7. [Docker-mode (единственный)](#docker-mode-единственный)
 8. [Авторизация и стоимость](#авторизация-и-стоимость)
 9. [Что делать, когда что-то сломалось](#что-делать-когда-что-то-сломалось)
 10. [Расширения и следующие шаги](#расширения-и-следующие-шаги)
@@ -157,7 +157,7 @@ write RUN_RESULT.json
 
 ### Rate-limit handling
 Каждый CLI имеет свои паттерны "ты упёрся в лимит" (см.
-`host_runner.py:_RL_PATTERNS`). Если они находятся в хвосте
+`multivarka/runner_common.py:_RL_PATTERNS`). Если они находятся в хвосте
 stdout/stderr — участник помечается `rate_limited` со ссылкой на
 конкретную evidence-строку. **Не блокируем других** — у claude и
 gemini лимиты независимые, codex может умереть, claude и gemini
@@ -186,7 +186,8 @@ claude --print "<prompt>" --add-dir /work
 claude --add-dir /work --print "<prompt>"   # ←  prompt теряется
 ```
 
-Это запечено в `host_runner.CLI_COMMANDS["claude"]`.
+Это запечено в `templates/cook/participants/claude/entrypoint.sh` —
+канонический порядок argv per flavor см. в `docs/orchestration.md`.
 
 ### Выходной "контракт"
 Участник должен положить результат под `./out/`. Это конвенция,
@@ -261,50 +262,48 @@ v0.1, в TODO).
    на резапуск (не реализован в v0.1: запускай руками после
    восстановления квоты).
 
-## Host-mode vs Docker-mode
+## Docker-mode (единственный)
 
-### Host-mode (по умолчанию, v0.1)
-- CLI запускаются на хосте
-- Используется подписочная авторизация (Claude Code Pro,
-  ChatGPT Plus, Gemini Advanced)
-- Изоляция: только filesystem (каждому свой work-dir, симлинки на
-  raw/ и BRIEF.md). Не chroot, не namespace — обычный uid.
-- Плюс: работает из коробки, никаких API-ключей.
-- Минус: участники в принципе могут писать в любой каталог
-  (полагаемся, что промпт "не выходи за work-dir" ими соблюдается).
-  Для враждебных задач не подойдёт; для обычных творческих — ок.
+Начиная с v0.2 multivarka работает только в docker-mode. Host-mode
+и `host_runner.py` удалены — если что-то ломалось без них, чинится
+в docker-mode.
 
-### Docker-mode (NOT YET in v0.1)
-Заготовлены `templates/cook/participants/<flavor>/Dockerfile`.
+- Каждый участник и каждый судья — собственный контейнер на
+  собственной bridge-сети (`net-participant-<name>` /
+  `net-judge-<name>`). Inter-container DNS/IP-видимости в одном
+  cook'е нет.
+- Egress в интернет открыт. Sandbox — это контейнер, не сеть.
+  Если конкретный cook требует жёсткий allowlist — кладёшь
+  локальный `compose.override.yaml`.
+- Подписочные креды (Claude Pro / ChatGPT Plus / Gemini Advanced)
+  снапшотятся в `cooks/<task>/.auth/<flavor>/` (mode `0600`,
+  `.gitignore`) и bind-mount'ятся RO в соответствующий контейнер.
+  **API-ключей не нужно**, и silent-fallback на API-ключ не
+  предусмотрен. См. `docs/auth.md`.
+- Permission-bypass флаги (`--dangerously-skip-permissions`,
+  `--yolo`, `--dangerously-bypass-approvals-and-sandbox`) внутри
+  контейнера обязательны: без них CLI зависают на
+  approval-промптах. Безопасны, потому что контейнер их сдерживает.
+- Shared base images (`mv-base-<flavor>:latest`) ставят тяжёлое
+  (`npm i -g <cli>`), а cook-Dockerfile укорочен до
+  `FROM mv-base-<flavor>` + entrypoint. Build cook-образа ~1 сек
+  вместо 2-3 мин. `multivarka build-base` собирает руками; cook /
+  refine / judge сами зовут `base_images.ensure_built()`, поэтому
+  для пользователя это прозрачно.
 
-Когда понадобится включить:
-
-1. Реализовать `--docker` в `cook.py` (вместо `host_runner.run`
-   делать `docker run` в подготовленный контейнер).
-2. Получить API-ключи: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
-   `GEMINI_API_KEY`. Положить в `~/.multivarka/auth.env`.
-3. На каждый запуск:
-   ```
-   docker run --rm \
-     --env-file ~/.multivarka/auth.env \
-     -v $(pwd)/work/<p>:/work \
-     -v $(pwd)/raw:/raw:ro \
-     -v $(pwd)/BRIEF.md:/work/BRIEF.md:ro \
-     multivarka-<flavor>
-   ```
-4. Реализовать ту же rate-limit детекцию по логам контейнера.
-
-Зачем: настоящая изоляция (cgroup, network namespace, no host fs
-access). Когда ты доверяешь LLM меньше, чем доверяешь себе.
+Threat model и что именно защищает контейнер: см.
+[`docs/security.md`](docs/security.md).
 
 ## Авторизация и стоимость
 
-### Подписки vs API
-- Subscription (host-mode): Claude Pro $20/m, Plus $20/m, Gemini Advanced
-  $20/m. Достаточно для нескольких задач в день. Лимиты низкие — типичный
-  cook на 3 участника гоняет ≈ 30k–200k токенов на каждого.
-- API (docker-mode или явный экспорт ключей в host-mode): по факту,
-  обычно $0.05–$2.00 на cook в зависимости от размера задачи.
+### Подписки
+- Только подписочная авторизация: Claude Pro $20/м, ChatGPT Plus
+  $20/м, Gemini Advanced $20/м. Достаточно для нескольких задач в
+  день; лимиты низкие — типичный cook на 3 участника гоняет
+  ≈ 30k–200k токенов на каждого.
+- API-ключи не используются и **не подключаются как fallback**: если
+  подписочный creds недоступен, `multivarka doctor` / `cook` падают
+  явно с remediation-сообщением, а не уходят молча на платный API.
 
 ### Бюджет на cook
 Рассчитывается грубо:
@@ -357,27 +356,47 @@ participants:
 ```
 В v0.2 хочется флаг `--max-parallel N`.
 
+## Refine: round N+1 поверх предыдущего результата
+
+Не каждая задача решается в один раунд. `multivarka refine <task>`
+прогоняет ещё один раунд поверх предыдущего output'а:
+
+- Каждый участник видит свой прошлый `./out/` **на месте, RW** —
+  редактирует/заменяет/расширяет.
+- Перед запуском прошлый раунд снапшотится в `rounds/<N>/<p>/`
+  (immutable history), плюс sealed `judging/_inbox/` копируется в
+  `rounds/<N>/_inbox/`.
+- Inline в `PROMPT.txt` подставляются:
+  - **shared feedback** из `cooks/<task>/FEEDBACK.md` (общий
+    review для всех);
+  - **personal feedback** из `cooks/<task>/FEEDBACK_<flavor>.md`
+    (опционально, адресовано конкретному участнику).
+- `--participants <list>` позволяет refine'ить подмножество.
+
+Артефакты раунда: `REFINE_<N>.json` (метаданные старта),
+`REFINE_<N>_RESULT.json` (status + duration + rate-limit info per
+participant). Полный lifecycle артефактов — в
+[`docs/lifecycle.md`](docs/lifecycle.md).
+
+После refine ожидаем тот же шаг judging'а:
+`multivarka judge <task>` → `multivarka report <task>`.
+
 ## Расширения и следующие шаги
 
-В порядке приоритета — что просится в v0.2+:
+Что осталось в TODO (см. `docs/todo.md` для актуального списка):
 
-1. **Cost ledger** — на каждый запуск CLI парсим использование (в
-   stderr CLI claude печатает usage; для codex/gemini — есть
-   аналоги) и пишем `cook/cost_ledger.json`.
+1. **Cost ledger** — на каждый запуск парсим usage из CLI и пишем
+   `cook/cost_ledger.json`.
 2. **Resume** — `multivarka resume <name>` повторяет только
    `rate_limited` или `error` участников, не трогая `ok`.
-3. **Rounds** — оригинальный arena умел в N-раундовый турнир
-   (каждый участник видел свой прошлый раунд + handover). Не вошло
-   в v0.1, потому что для большинства задач не нужно.
-4. **Docker-mode wired up** — тот самый `--docker` флаг, который
-   сейчас просто говорит "не реализовано".
-5. **Web report** — `multivarka serve <name>` показывает HTML с
+3. **Per-participant timeout** (сейчас глобальный `timeout_s`).
+4. **`multivarka diff <task> N M`** — сравнение раундов.
+5. **Replayable traces / registry** — структурированный run trace,
+   versioned task specs (идеи из agentevals / OpenAI Evals).
+6. **Web report** — `multivarka serve <name>` показывает HTML с
    diff-ами между submissions, judging logs, leaderboard'ом.
-6. **Cross-cook leaderboard** — глобальная таблица "claude
+7. **Cross-cook leaderboard** — глобальная таблица "claude
    выигрывает в 7 из 10 задач, codex в 2, gemini в 1".
-7. **Inspect AI integration** — переехать на UK AISI Inspect
-   ([inspect.aisi.org.uk](https://inspect.aisi.org.uk)) как на
-   нижний слой, оставив мультиварку как DSL/CLI поверх.
 
 ## Уроки из reproxy/arena
 

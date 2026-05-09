@@ -1,20 +1,17 @@
 name: hello-task
-timeout_s: 600          # 10 minutes is plenty for a haiku
-judge_timeout_s: 300
+timeout_s: 120          # dummy flavor finishes in seconds
+judge_timeout_s: 60
 
+# Sanitized example: participants and judges all use the `dummy` flavor,
+# which runs locally in alpine without any LLM credentials. Replace with
+# claude/codex/gemini when you want a real bake-off.
 participants:
-  - name: claude
-    flavor: claude
-  - name: codex
-    flavor: codex
-  - name: gemini
-    flavor: gemini
+  - { name: a, flavor: dummy }
+  - { name: b, flavor: dummy }
+  - { name: c, flavor: dummy }
 
 judges:
-  - name: claude-judge
-    flavor: claude
-  - name: gemini-judge
-    flavor: gemini
+  - { name: judge-1, flavor: dummy }
 
 rubric:
   scale: [0, 5]
