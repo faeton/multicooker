@@ -8,43 +8,64 @@ from pathlib import Path
 
 from . import __version__
 from .new_cook import new_cook
+from .add_participant import add_participant
 from .cook import cook
 from .judge import judge as judge_cook
 from .report import report
 from .clean import clean
 from .refine import refine
+from .doctor import doctor
+
+
+def _csv(s: str | None) -> list[str] | None:
+    return [x.strip() for x in s.split(",") if x.strip()] if s else None
 
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
         prog="multivarka",
-        description="Run several LLM agents on the same task in parallel sandboxes.",
+        description="Run several LLM agents on the same task in parallel docker sandboxes.",
     )
     p.add_argument("--version", action="version", version=f"multivarka {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
+
+    # doctor
+    pd = sub.add_parser("doctor",
+                        help="Preflight: check docker + creds for a cook (or default flavors)")
+    pd.add_argument("name", nargs="?", default=None,
+                    help="Cook folder name (optional; if given, checks the flavors it uses)")
+    pd.add_argument("--root", default="cooks")
+    pd.add_argument("--participants", default=None,
+                    help="Override flavors to check (comma-separated)")
 
     # new
     pn = sub.add_parser("new", help="Scaffold a new cook (task) folder")
     pn.add_argument("name", help="Folder name under cooks/ (e.g. my-task)")
     pn.add_argument("--root", default="cooks", help="Parent folder (default: cooks/)")
     pn.add_argument("--participants", default="claude,codex,gemini",
-                    help="Comma-separated list (default: claude,codex,gemini)")
+                    help="Comma-separated list (default: claude,codex,gemini). "
+                         "Each entry is a flavor; for multiple participants of "
+                         "the same flavor use NAME=FLAVOR (e.g. claude-a=claude,claude-b=claude).")
+
+    # add-participant (extend an existing cook)
+    pap = sub.add_parser("add-participant",
+                         help="Add another participant to an existing cook")
+    pap.add_argument("name", help="Cook folder name")
+    pap.add_argument("participant",
+                     help="NEW_NAME or NEW_NAME=FLAVOR (flavor defaults to NEW_NAME)")
+    pap.add_argument("--root", default="cooks")
 
     # cook
     pc = sub.add_parser("cook", help="Launch all participants in parallel")
     pc.add_argument("name", help="Cook folder name (under cooks/ unless absolute)")
     pc.add_argument("--root", default="cooks")
-    pc.add_argument("--docker", action="store_true",
-                    help="Use docker-mode (requires per-participant Dockerfile + API keys)")
     pc.add_argument("--participants", default=None,
-                    help="Override which participants to run (comma-separated)")
+                    help="Override which participants to run (comma-separated NAMES from brief.yaml)")
 
     # judge
     pj = sub.add_parser("judge", help="Score all participant outputs with LLM judges")
     pj.add_argument("name")
     pj.add_argument("--root", default="cooks")
-    pj.add_argument("--docker", action="store_true",
-                    help="Run judges in containers (matches `cook --docker`).")
     pj.add_argument("--judges", default=None,
                     help="Override judges (comma-separated, e.g. claude,gemini)")
 
@@ -76,28 +97,35 @@ def main(argv: list[str] | None = None) -> int:
 
     args = p.parse_args(argv)
 
+    if args.cmd == "doctor":
+        return doctor(
+            name=args.name, root=Path(args.root),
+            participants_override=_csv(args.participants),
+        )
     if args.cmd == "new":
         return new_cook(
             name=args.name, root=Path(args.root),
-            participants=args.participants.split(","),
+            participants=_csv(args.participants) or [],
+        )
+    if args.cmd == "add-participant":
+        return add_participant(
+            name=args.name, root=Path(args.root),
+            spec=args.participant,
         )
     if args.cmd == "cook":
         return cook(
             name=args.name, root=Path(args.root),
-            use_docker=args.docker,
-            participants_override=args.participants.split(",") if args.participants else None,
+            participants_override=_csv(args.participants),
         )
     if args.cmd == "judge":
         return judge_cook(
             name=args.name, root=Path(args.root),
-            use_docker=args.docker,
-            judges_override=args.judges.split(",") if args.judges else None,
+            judges_override=_csv(args.judges),
         )
     if args.cmd == "refine":
         return refine(
             name=args.name, root=Path(args.root),
-            use_docker=True,
-            participants_override=args.participants.split(",") if args.participants else None,
+            participants_override=_csv(args.participants),
         )
     if args.cmd == "report":
         return report(name=args.name, root=Path(args.root))

@@ -1,8 +1,5 @@
 """Run one participant or judge cell as a docker compose service.
 
-Mirrors host_runner.RunResult so cook.py / judge.py can swap runners
-without further changes.
-
 Lifecycle per cell:
   1. `docker compose -p <project> up -d <service>`  (image must already be built)
   2. Tail container logs to log_dir/<flavor>.{stdout,stderr}.log
@@ -10,7 +7,7 @@ Lifecycle per cell:
   3. Poll exit status. On wall-clock timeout: `docker compose stop -t 10 <service>`
      then `kill` if still alive.
   4. Tear down with `docker compose rm -fsv <service>`.
-  5. Tail logs, run host_runner._detect_rate_limit on combined output.
+  5. Tail logs, run runner_common.detect_rate_limit on combined output.
 
 Building the images is the caller's job (cook.py runs
 `docker compose -p <project> build` once before launching anything).
@@ -24,7 +21,7 @@ import threading
 import time
 from pathlib import Path
 
-from .host_runner import RunResult, _detect_rate_limit, _tail
+from .runner_common import RunResult, detect_rate_limit, tail
 
 
 def _docker_compose(cook_dir: Path, project: str, *args: str,
@@ -142,8 +139,8 @@ def run_cell(
     # Final teardown — keeps `docker compose ps` clean for the next cell.
     _docker_compose(cook_dir, project, "rm", "-fsv", service)
 
-    combined = _tail(stdout_path)
-    rl, retry_after, evidence = _detect_rate_limit(flavor, combined)
+    combined = tail(stdout_path)
+    rl, retry_after, evidence = detect_rate_limit(flavor, combined)
     return RunResult(
         flavor=flavor, exit_code=exit_code, duration_s=duration,
         timed_out=timed_out, stdout_path=stdout_path, stderr_path=stderr_path,

@@ -27,8 +27,8 @@ from pathlib import Path
 
 import yaml
 
-from .host_runner import run, RunResult
 from . import compose_render, compose_runner, creds
+from .cook import _snapshot_creds_or_die
 
 
 JUDGE_PROMPT_TEMPLATE = """\
@@ -142,7 +142,7 @@ def _collect_scores(work: Path, judge_outbox: Path) -> bool:
     return (judge_outbox / "scores.json").exists()
 
 
-def judge(name: str, root: Path, use_docker: bool = False,
+def judge(name: str, root: Path,
           judges_override: list[str] | None = None) -> int:
     cook_dir = root / name if not Path(name).is_absolute() else Path(name)
     cfg = yaml.safe_load((cook_dir / "brief.yaml").read_text())
@@ -170,20 +170,20 @@ def judge(name: str, root: Path, use_docker: bool = False,
 
     timeout_s = int(cfg.get("judge_timeout_s", 15 * 60))
 
-    # In docker mode: snapshot creds once and re-render compose so judge
-    # services match brief.yaml.
-    project = f"mv-{cfg['name']}".lower().replace("_", "-") if use_docker else None
-    if use_docker:
-        flavors_needed = sorted({j.get("flavor", j["name"]) for j in judges_cfg})
-        creds.snapshot(cook_dir, flavors_needed)
-        compose_render.render_compose(cook_dir, cfg)
+    project = f"mv-{cfg['name']}".lower().replace("_", "-")
+    flavors_needed = sorted({j.get("flavor", j["name"]) for j in judges_cfg})
+    print("[judge] snapshotting creds...", flush=True)
+    rc = _snapshot_creds_or_die(cook_dir, flavors_needed)
+    if rc is not None:
+        return rc
+    compose_render.render_compose(cook_dir, cfg)
 
     any_score = False
     for j in judges_cfg:
         jname = j["name"]
         flavor = j.get("flavor", jname)
         # Anti-self-judging: warn (not skip). Anonymization already mitigates
-        # bias; for strict isolation add a third-flavor judge in brief.yaml.
+        # bias; for strict isolation add a different-flavor judge in brief.yaml.
         same_flavor_participants = [p["name"] for p in participants
                                     if p.get("flavor", p["name"]) == flavor]
         if same_flavor_participants:
@@ -192,31 +192,19 @@ def judge(name: str, root: Path, use_docker: bool = False,
                   f"but for full anti-bias add a different-flavor judge.",
                   flush=True)
         print(f"[judge] running {jname} ({flavor})...", flush=True)
-        work = _setup_judge_workdir(cook_dir, jname, judge_in,
-                                    deterministic=use_docker)
+        work = _setup_judge_workdir(cook_dir, jname, judge_in, deterministic=True)
         log_dir = cook_dir / "judging" / "_logs" / jname
-        if use_docker:
-            # Container reads /work/PROMPT.txt via the same entrypoint as cook.
-            (work / "PROMPT.txt").write_text(JUDGE_PROMPT_TEMPLATE)
-            service = f"judge-{jname}"
-            try:
-                compose_runner.build_images(cook_dir, project, [service])
-                res = compose_runner.run_cell(
-                    cook_dir=cook_dir, project=project, service=service,
-                    flavor=flavor, log_dir=log_dir, timeout_s=timeout_s,
-                )
-            except Exception as e:                                          # noqa: BLE001
-                print(f"[judge] {jname}: failed to launch (docker): {e}", flush=True)
-                continue
-        else:
-            try:
-                res = run(
-                    flavor=flavor, worktree=work, prompt_text=JUDGE_PROMPT_TEMPLATE,
-                    log_dir=log_dir, timeout_s=timeout_s, wait_for_reset=False,
-                )
-            except Exception as e:                                          # noqa: BLE001
-                print(f"[judge] {jname}: failed to launch: {e}", flush=True)
-                continue
+        (work / "PROMPT.txt").write_text(JUDGE_PROMPT_TEMPLATE)
+        service = f"judge-{jname}"
+        try:
+            compose_runner.build_images(cook_dir, project, [service])
+            res = compose_runner.run_cell(
+                cook_dir=cook_dir, project=project, service=service,
+                flavor=flavor, log_dir=log_dir, timeout_s=timeout_s,
+            )
+        except Exception as e:                                              # noqa: BLE001
+            print(f"[judge] {jname}: failed to launch: {e}", flush=True)
+            continue
         outbox = cook_dir / "judging" / jname
         ok = _collect_scores(work, outbox)
         if not ok:
@@ -228,19 +216,15 @@ def judge(name: str, root: Path, use_docker: bool = False,
         except json.JSONDecodeError as e:
             print(f"[judge] {jname}: scores.json invalid: {e}", flush=True)
             continue
-        # De-anonymize the score keys for the report.
         deanon = {mapping.get(k, k): v for k, v in scores.items()}
-        (outbox / "scores_deanon.json").write_text(
-            json.dumps(deanon, indent=2)
-        )
+        (outbox / "scores_deanon.json").write_text(json.dumps(deanon, indent=2))
         any_score = True
         print(f"[judge] {jname}: ok, {len(deanon)} participants scored", flush=True)
 
-    if use_docker:
-        try:
-            compose_runner.teardown(cook_dir, project)
-        except Exception as e:                                              # noqa: BLE001
-            print(f"[judge] teardown warning: {e}", flush=True)
+    try:
+        compose_runner.teardown(cook_dir, project)
+    except Exception as e:                                                  # noqa: BLE001
+        print(f"[judge] teardown warning: {e}", flush=True)
 
     if not any_score:
         print("[judge] no judges produced scores; nothing to report", flush=True)

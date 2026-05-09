@@ -25,8 +25,8 @@ from pathlib import Path
 import yaml
 
 from . import compose_render, compose_runner, creds
-from .cook import _seal_for_judging
-from .host_runner import RunResult
+from .cook import _seal_for_judging, _snapshot_creds_or_die
+from .runner_common import RunResult
 
 
 REFINE_PROMPT_HEADER = """\
@@ -188,7 +188,7 @@ def _run_one(cook_dir: Path, project: str, participant: dict,
           flush=True)
 
 
-def refine(name: str, root: Path, use_docker: bool = True,
+def refine(name: str, root: Path,
            participants_override: list[str] | None = None) -> int:
     cook_dir = root / name if not Path(name).is_absolute() else Path(name)
     if not cook_dir.exists():
@@ -234,17 +234,15 @@ def refine(name: str, root: Path, use_docker: bool = True,
         "snapshot": str(snap),
     }, indent=2))
 
-    if not use_docker:
-        print("error: refine currently supports docker-mode only", flush=True)
-        return 2
-
     project = f"mv-{cfg['name']}".lower().replace("_", "-")
     flavors_needed = sorted({p.get("flavor", p["name"]) for p in participants})
 
     print(f"[refine] round {round_num}: project={project} flavors={flavors_needed}",
           flush=True)
     print("[refine] snapshotting creds...", flush=True)
-    creds.snapshot(cook_dir, flavors_needed)
+    rc = _snapshot_creds_or_die(cook_dir, flavors_needed)
+    if rc is not None:
+        return rc
 
     # 2. Compose render (judges section may be re-rendered later by `judge`,
     #    but we still need participant services to exist.)

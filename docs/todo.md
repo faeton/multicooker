@@ -1,124 +1,171 @@
-# TODO: подготовка к open source
+# TODO
 
-Этот список фиксирует, что нужно сделать перед публичной публикацией
-multivarka. Главный принцип: сначала сделать публичное поведение честным
-и воспроизводимым, потом уже полировать внешний вид.
+Что осталось сделать в multivarka — реалистично, по приоритетам.
+Главный принцип не меняется: сначала честное и воспроизводимое
+поведение, потом полировка. Раздел "Сделано (история)" внизу — для
+ориентира, что уже выкошено за последние сессии.
 
-## Блокеры перед публикацией
+## Приоритет 0 — следующая сессия
 
-- [ ] Выбрать и явно описать текущий статус проекта:
-  - либо `v0.1` = host-mode experimental, Docker-mode roadmap;
-  - либо сначала доделать Docker-mode и сделать его дефолтом.
-- [ ] Синхронизировать `README.md`, `CLAUDE.md` / `AGENTS.md`,
-  `HOWTO.md` и `docs/implementation-status.md`, чтобы они не обещали
-  разные security/runtime модели.
-- [ ] Удалить из рабочей копии все локальные run-артефакты и секреты:
-  `cooks/*/.auth/`, логи, judge outputs, приватные raw-файлы.
-- [ ] Проверить git history secret scanner'ом перед публикацией.
-- [ ] Добавить `LICENSE`. Практичный дефолт для такого инструмента:
-  MIT или Apache-2.0.
-- [ ] Добавить `CONTRIBUTING.md` и `SECURITY.md`.
-- [ ] Добавить CI: lint, tests, package build, secret scan.
+- [ ] Сетевая модель в compose-render. Сейчас один обычный bridge,
+  все участники в одной сети, egress открыт. Целевой вариант:
+  - `clients-<task>` сеть `internal: true` (между участниками
+    видимости нет, в интернет — нет);
+  - отдельная `llm-egress` сеть, к которой подключён
+    allowlist-proxy, и только проксирующая известные домены LLM
+    API (anthropic, openai, googleapis + auth-домены).
+  - На время разработки прокси можно сделать опциональным
+    (compose.override.yaml), но дефолт должен ехать с internal
+    isolation хотя бы между участниками.
+- [ ] `multivarka doctor` уже есть, но
+  - [ ] Расширить: проверять, что для всех flavors из brief.yaml
+    есть Dockerfile в `templates/cook/participants/<flavor>/`.
+  - [ ] Добавить флаг `--strict`, чтобы не было warn-only по
+    отсутствию Dockerfile, а сразу exit=1.
+- [ ] Image size. Сейчас на каждый cook ставятся независимые
+  `mv-<task>-{claude,codex,gemini}` поверх node:22-slim, каждый
+  ~600 MB. Фактический shared слой (npm i -g <cli>) ставится 3
+  раза. Решения:
+  - shared `mv-base` image, локально один раз; cook'и наследуются
+    `FROM mv-base` и добавляют только entrypoint;
+  - либо общая base через docker bake / buildx с named target.
 
-## Docker-mode
+## Приоритет 1 — после v0.2 cook'а
 
-- [ ] Реализовать `compose_runner.py`:
-  - build / up / logs-follow / wait / timeout / rm;
-  - перенос rate-limit detection из `host_runner.py`;
-  - корректный статус `ok`, `rate_limited`, `timed_out`,
-    `non_zero_exit`.
-- [ ] Подключить `compose_render.render_compose()` и `creds.snapshot()`
-  из `cook.py`.
-- [ ] Сделать Docker-mode дефолтом или явно оставить под
-  `--docker --experimental`.
-- [ ] Добавить `--legacy-host`, если host-mode остается как fallback.
-- [ ] Реализовать Docker judging:
-  - материализация judge input копиями, не симлинками;
-  - запуск judge service через compose;
-  - сбор `outbox/scores.json` и `review.md`.
-- [ ] Согласовать сетевую модель:
-  - целевой вариант: `clients-<task>` internal + отдельный egress;
-  - MVP-вариант: обычный bridge, но честно помеченный как weaker
-    isolation.
-- [ ] Решить, нужен ли allowlist egress proxy в первой OSS-версии.
+- [ ] Tests:
+  - [ ] unit для `new_cook.parse_participant` (NAME, NAME=FLAVOR,
+    дубли, пустые сегменты);
+  - [ ] unit для `add_participant` (idempotency, missing brief);
+  - [ ] unit для `runner_common.detect_rate_limit` по sample
+    stdout/stderr каждого CLI;
+  - [ ] unit для `judge._anonymize` (mapping создаётся, в judge
+    input нет flavor names);
+  - [ ] unit для `report` (агрегация, missing/invalid scores,
+    total=0).
+- [ ] Integration smoke без реальных LLM CLI: `dummy` flavor с
+  Dockerfile, который просто `cat PROMPT.txt > out/RESULT.md`.
+  Тогда CI проверяет cook→judge→report end-to-end без auth.
+- [ ] Packaging:
+  - [ ] перенести templates внутрь `multivarka/templates/`;
+  - [ ] `pip install dist/*.whl && multivarka new smoke` smoke;
+  - [ ] `.dockerignore` в каждый participant template.
+- [ ] CI: lint (ruff), tests, package build, secret scan.
 
-## Auth и секреты
+## Приоритет 2 — перед публикацией
 
-- [ ] Добавить команду `multivarka init-auth` или `multivarka doctor`,
-  которая проверяет доступность creds для выбранных flavors.
-- [ ] Сделать сообщения об auth failure конкретными: какой CLI, какой
-  файл, какая команда логина нужна.
-- [ ] Убедиться, что `.auth/` добавляется в `.gitignore` каждого cook и
-  никогда не попадает в examples.
+- [ ] LICENSE (MIT или Apache-2.0).
+- [ ] CONTRIBUTING.md, SECURITY.md.
+- [ ] Переписать README вокруг одного first-run сценария:
+  `doctor → new → cook → judge → report` с docker как единственным
+  режимом.
+- [ ] Синхронизировать HOWTO.md с реальностью:
+  - выпилить упоминания `~/.multivarka/auth.env` и API-ключей
+    (line ~284 — наследие host-mode);
+  - выпилить host-mode инструкции;
+  - добавить refine-режим в основной flow.
+- [ ] `docs/security.md`: threat model, что защищает Docker, что
+  не защищено, как обращаться с raw/ и creds.
+- [ ] `examples/hello-task` — sanitized пример, который запускается
+  без приватных материалов и без LLM (через dummy flavor).
+- [ ] Описать lifecycle артефактов: `work/`, `logs/`, `judging/`,
+  `rounds/`, `RUN_RESULT.json`, `REFINE_*.json`, cleanup через
+  `clean`.
+- [ ] Проверить git history secret scanner'ом (gitleaks/trufflehog).
+
+## Auth + creds
+
+- [ ] Расширить `creds.py` для случая, когда у пользователя
+  несколько Anthropic/Google аккаунтов и нужно выбирать профиль.
+  Сейчас Keychain entry один, gemini config один.
 - [ ] Документировать риск: подписочные OAuth-файлы монтируются в
-  контейнер и доступны агенту внутри sandbox.
-- [ ] Проверить актуальность формата Claude Code credentials. Сейчас код
-  ожидает `claudeAiOauth` в Keychain JSON.
+  контейнер и доступны агенту внутри sandbox. Compromised CLI
+  может их прочитать. Это плата за headless подписочную auth.
+- [ ] Watcher для `claudeAiOauth` ключа: если Anthropic поменяет
+  shape JSON, мы упадём с понятным сообщением (уже есть, но
+  стоит протестировать на mock-ключе и зафиксировать regression
+  test).
 
-## Packaging
+## Расширяемость участников
 
-- [ ] Исправить packaging templates. Текущий `pyproject.toml` использует
-  package-data на `../templates/**/*`; лучше:
-  - перенести templates внутрь `multivarka/templates/`; или
-  - добавить корректный `MANIFEST.in` и тест wheel/sdist.
-- [ ] Добавить smoke-test установленного пакета:
-  `pip install dist/*.whl && multivarka new smoke`.
-- [ ] Убрать `__pycache__` из рабочей копии перед публикацией.
-- [ ] Добавить `.dockerignore` для сборки participant images.
+- [x] Поддержать N участников вместо хардкода 3 в CLI (готово —
+  `--participants` парсит `NAME=FLAVOR`, `add-participant`).
+- [ ] Поддержать **разные модели одного flavor**: сейчас claude в
+  контейнере зовёт `claude --print`, без указания модели. Хочется
+  `name: claude-opus, flavor: claude, env: {ANTHROPIC_MODEL: opus}`
+  или argv-extension через brief.yaml.
+- [ ] Поддержать **новые CLI** без правки шаблонов: добавить
+  `templates/cook/participants/_custom/Dockerfile.example` и
+  документ "как добавить свой flavor за 10 минут".
+- [ ] Per-participant timeout (сейчас глобальный `timeout_s`).
 
-## Tests
+## Refine
 
-- [ ] Unit tests для `new_cook`:
-  - дата-префикс;
-  - не дублирует `YYMMDD-`;
-  - participants попадают в `brief.yaml`.
-- [ ] Unit tests для anonymization в `judge.py`:
-  - mapping создается;
-  - judge input не содержит flavor names;
-  - материалы копируются, не симлинкуются.
-- [ ] Unit tests для `report.py`:
-  - агрегация нескольких судей;
-  - missing/invalid scores не ломают отчет;
-  - корректная обработка `total = 0`.
-- [ ] Tests для rate-limit parser по sample stderr/stdout каждого CLI.
-- [ ] Integration smoke-test без реальных LLM CLI через fake flavor или
-  dummy entrypoint.
-
-## Документация
-
-- [ ] Переписать README вокруг одного понятного first-run сценария.
-- [ ] Добавить `docs/architecture.md` или обновить
-  `docs/orchestration.md` с фактической схемой runtime.
-- [ ] Добавить `docs/security.md`:
-  - threat model;
-  - что защищает Docker;
-  - что не защищено;
-  - как обращаться с raw-файлами и creds.
-- [ ] Добавить sanitized example в `examples/hello-task`, который можно
-  запустить без приватных материалов.
-- [ ] Описать lifecycle артефактов:
-  `work/`, `logs/`, `judging/`, `leaderboard.md`, cleanup.
+- [ ] Описать refine-контракт в `docs/orchestration.md`: что
+  переживает round (`out/`), что снапшотится (`rounds/N/`), как
+  устроен FEEDBACK.md и FEEDBACK_<flavor>.md.
+- [ ] `multivarka refine --feedback <path>` — позволить указать
+  один FEEDBACK файл вне cook_dir (для повторного использования
+  feedback'а между cook'ами).
+- [ ] Возможность refine только подмножества участников
+  (`--participants`) уже есть; покрыть тестом.
+- [ ] `multivarka diff <task> N M` — показать diff между раундами
+  N и M по конкретному участнику (sanity-check, что refine
+  реально что-то поменял).
 
 ## Идеи из аналогов
 
-- [ ] Взять у OpenHands явное разделение sandbox providers:
-  Docker recommended, process/host unsafe-fast, remote/future.
-- [ ] Взять у agentevals идею replayable traces: сохранять
-  структурированный run trace, чтобы можно было пересуживать без
-  повторного `cook`.
-- [ ] Взять у OpenAI Evals registry-подход: versioned eval/task specs,
-  которые можно шарить как шаблоны.
-- [ ] Взять у Giskard / NeMo Evaluator проверки качества и безопасности:
-  `multivarka check <task>` для rubric/schema/secrets/isolation.
-- [ ] Взять у AgentV / Iris локальный YAML-first workflow:
-  формализовать `brief.yaml` через JSON Schema и добавить deterministic
-  validators до LLM-судей.
+- [ ] Replayable traces (agentevals): сохранять структурированный
+  run trace, чтобы можно было пересуживать без повторного cook.
+- [ ] Registry-подход (OpenAI Evals): versioned eval/task specs,
+  шарящиеся как шаблоны.
+- [ ] Deterministic validators (AgentV / Iris) — валидировать
+  brief.yaml через JSON Schema до LLM-судей.
+- [ ] Sandbox-providers как у OpenHands: Docker по умолчанию,
+  remote/Kubernetes как опция.
 
 ## Не делать
 
+- [ ] Не возвращать host-mode. Если что-то перестало работать
+  без него — починить в docker-mode.
+- [ ] Не добавлять API-key fallback как тихий путь. Если
+  подписочная auth недоступна, лучше явная ошибка `doctor`/`cook`.
+- [ ] Не копировать stderr/stdout участников в judge input — это
+  ломает анонимизацию.
 - [ ] Не публиковать репозиторий с реальными `cooks/` и `.auth/`.
-- [ ] Не обещать Docker isolation, пока CLI реально запускает host-mode.
-- [ ] Не добавлять API-key fallback как тихий путь. Если подписочная auth
-  недоступна, лучше явная ошибка.
-- [ ] Не копировать stderr/stdout участников в judge input: это ломает
-  анонимизацию.
+
+---
+
+## Сделано (история, для ориентира)
+
+- ✅ `compose_runner.py` — build / up / logs-follow / wait / timeout / rm,
+  rate-limit detection (мигрировал в `runner_common.py`),
+  статусы ok/rate_limited/timed_out/non_zero_exit.
+- ✅ `compose_render.render_compose()` + `creds.snapshot()` подключены
+  в `cook.py` и `refine.py` и `judge.py`.
+- ✅ Docker-mode стал единственным; `--docker` флаг убран. Host-mode
+  и `host_runner.py` удалены.
+- ✅ `runner_common.py` отдельным модулем (RunResult + detect_rate_limit
+  + tail) вместо разделяемых private-helpers из host_runner.
+- ✅ Docker judging: материализация копиями, deterministic
+  `_work-<judge>` для предсказуемых mount'ов, сбор
+  `outbox/scores.json` + `review.md`.
+- ✅ Friendly auth failure: `_snapshot_creds_or_die` ловит
+  `CredsError`, печатает причину + remediation, exit=2 без
+  traceback'а. Используется в cook/judge/refine.
+- ✅ `multivarka doctor` — preflight для docker + creds, по
+  cook-имени или по списку flavors.
+- ✅ `multivarka add-participant <task> NAME[=FLAVOR]` — расширение
+  существующего cook'а без правки brief.yaml вручную.
+- ✅ `--participants NAME=FLAVOR` в `new`/`cook`/`refine` поддерживает
+  множественные участники одного flavor (claude-a, claude-b…).
+- ✅ `multivarka refine` — round-N итерация поверх предыдущего
+  output'а; снапшот в `rounds/<N>/`, inline shared+personal
+  FEEDBACK в PROMPT.txt.
+- ✅ `multivarka clean` — `compose down -v --rmi local` для одного
+  cook'а или `--all`; флаги `--keep-creds`, `--dry-run`.
+- ✅ `.auth/` записывается в per-cook `.gitignore` через
+  `creds.snapshot()`.
+- ✅ Подтверждена актуальность `claudeAiOauth` Keychain JSON формата
+  (cook 260509-steamping-design прошёл с реальными creds).
+- ✅ `cooks/` глобально в .gitignore — креды и LLM-выходы никогда не
+  попадают в индекс.
