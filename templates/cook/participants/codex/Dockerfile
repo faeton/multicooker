@@ -1,15 +1,19 @@
-# Docker-mode scaffold for codex participant.
-# NOT WIRED UP IN v0.1. See HOWTO.md §Docker.
-
 FROM node:22-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN npm install -g @openai/codex
 
-WORKDIR /work
-ENV MULTIVARKA_IN_SANDBOX=1
+RUN mkdir -p /work /home/node/.codex \
+ && chown -R node:node /work /home/node/.codex
 
-CMD ["codex", "exec", \
-     "--cd", "/work", \
-     "--dangerously-bypass-approvals-and-sandbox", \
-     "--skip-git-repo-check", \
-     "Read /work/BRIEF.md and complete the task. Reference material at /raw/."]
+COPY entrypoint.sh /usr/local/bin/mv-entrypoint
+RUN chmod +x /usr/local/bin/mv-entrypoint
+
+USER node
+WORKDIR /work
+ENV HOME=/home/node
+
+ENTRYPOINT ["/usr/local/bin/mv-entrypoint"]

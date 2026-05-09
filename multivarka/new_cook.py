@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import re
 import shutil
+from datetime import date
 from pathlib import Path
 
 import yaml
@@ -11,11 +13,15 @@ import yaml
 PKG_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_DIR = PKG_ROOT / "templates" / "cook"
 
+_DATE_PREFIX_RE = re.compile(r"^\d{6}-")
+
 
 def new_cook(name: str, root: Path, participants: list[str]) -> int:
     if not TEMPLATE_DIR.exists():
         print(f"error: template dir not found at {TEMPLATE_DIR}", flush=True)
         return 2
+    if not _DATE_PREFIX_RE.match(name):
+        name = f"{date.today():%y%m%d}-{name}"
     target = root / name
     if target.exists():
         print(f"error: {target} already exists; pick another name", flush=True)
