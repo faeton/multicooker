@@ -89,10 +89,12 @@
 
 - [x] Поддержать N участников вместо хардкода 3 в CLI (готово —
   `--participants` парсит `NAME=FLAVOR`, `add-participant`).
-- [ ] Поддержать **разные модели одного flavor**: сейчас claude в
-  контейнере зовёт `claude --print`, без указания модели. Хочется
-  `name: claude-opus, flavor: claude, env: {ANTHROPIC_MODEL: opus}`
-  или argv-extension через brief.yaml.
+- [x] Поддержать **разные модели одного flavor**: brief.yaml
+  принимает `model:` per participant/judge; compose-render
+  пробрасывает в контейнер как `MULTIVARKA_MODEL=...`, и каждый
+  entrypoint.sh добавляет соответствующий argv (`--model` для
+  claude и gemini, `-c model=...` для codex). Дефолт без model =
+  CLI выбирает сам как раньше.
 - [ ] Поддержать **новые CLI** без правки шаблонов: добавить
   `templates/cook/participants/_custom/Dockerfile.example` и
   документ "как добавить свой flavor за 10 минут".

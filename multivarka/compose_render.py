@@ -38,6 +38,7 @@ def render_compose(cook_dir: Path, cfg: dict) -> Path:
             participant_name=pname,
             flavor=flavor,
             project=project,
+            model=p.get("model"),
         )
 
     # Judges (only emit if judging input has been materialized; cook.py
@@ -50,6 +51,7 @@ def render_compose(cook_dir: Path, cfg: dict) -> Path:
             judge_name=jname,
             flavor=flavor,
             project=project,
+            model=j.get("model"),
         )
 
     compose = {
@@ -91,9 +93,16 @@ def _auth_volumes(flavor: str, cook_dir: Path) -> list[str]:
 
 
 def _participant_service(cook_dir: Path, participant_name: str,
-                         flavor: str, project: str) -> dict:
+                         flavor: str, project: str,
+                         model: str | None = None) -> dict:
     cd = cook_dir.resolve()
     image = f"{project}-{flavor}"
+    env = {
+        "MULTIVARKA_FLAVOR": flavor,
+        "MULTIVARKA_PARTICIPANT": participant_name,
+    }
+    if model:
+        env["MULTIVARKA_MODEL"] = model
     return {
         "image": image,
         "build": {
@@ -102,10 +111,7 @@ def _participant_service(cook_dir: Path, participant_name: str,
         },
         "container_name": f"{project}-participant-{participant_name}",
         "working_dir": "/work",
-        "environment": {
-            "MULTIVARKA_FLAVOR": flavor,
-            "MULTIVARKA_PARTICIPANT": participant_name,
-        },
+        "environment": env,
         "volumes": [
             f"{cd}/BRIEF.md:/work/BRIEF.md:ro",
             f"{cd}/raw:/work/raw:ro",
@@ -120,7 +126,7 @@ def _participant_service(cook_dir: Path, participant_name: str,
 
 
 def _judge_service(cook_dir: Path, judge_name: str, flavor: str,
-                   project: str) -> dict:
+                   project: str, model: str | None = None) -> dict:
     cd = cook_dir.resolve()
     image = f"{project}-{flavor}-judge"
     judge_ctx = cd / "judge" / flavor
@@ -134,15 +140,18 @@ def _judge_service(cook_dir: Path, judge_name: str, flavor: str,
         }
     else:
         build = {"context": str(judge_ctx), "dockerfile": "Dockerfile"}
+    env = {
+        "MULTIVARKA_FLAVOR": flavor,
+        "MULTIVARKA_JUDGE": judge_name,
+    }
+    if model:
+        env["MULTIVARKA_MODEL"] = model
     return {
         "image": image,
         "build": build,
         "container_name": f"{project}-judge-{judge_name}",
         "working_dir": "/work",
-        "environment": {
-            "MULTIVARKA_FLAVOR": flavor,
-            "MULTIVARKA_JUDGE": judge_name,
-        },
+        "environment": env,
         "volumes": [
             f"{cd}/judging/_work-{judge_name}:/work:rw",
             *_auth_volumes(flavor, cook_dir),
