@@ -58,13 +58,38 @@ def _flags(flavor: str) -> list[str]:
     return SANDBOX_FLAGS[flavor] if os.environ.get("MULTIVARKA_IN_SANDBOX") == "1" else HOST_FLAGS[flavor]
 
 
+def _claude_add_dirs(wt: Path) -> list[str]:
+    # claude's sandbox treats symlink targets that resolve OUTSIDE every
+    # --add-dir as off-limits. Our worktrees keep `raw/` and `BRIEF.md` as
+    # symlinks to the cook root, so we must whitelist the cook root too —
+    # otherwise `Read raw/ref.pdf` and even `Read BRIEF.md` fail silently.
+    paths = [str(wt.resolve())]
+    raw_link = wt / "raw"
+    if raw_link.exists():
+        paths.append(str(raw_link.resolve()))
+    brief_link = wt / "BRIEF.md"
+    if brief_link.exists():
+        paths.append(str(brief_link.resolve().parent))
+    # de-dup while preserving order
+    seen = set()
+    unique = []
+    for p in paths:
+        if p not in seen:
+            seen.add(p)
+            unique.append(p)
+    out = []
+    for p in unique:
+        out += ["--add-dir", p]
+    return out
+
+
 CLI_COMMANDS = {
     "claude": lambda wt, p: [
         # Prompt MUST come before --add-dir: --add-dir is variadic and will
         # otherwise consume the prompt as another path.
         "claude", "--print", *_flags("claude"),
         p,
-        "--add-dir", str(wt),
+        *_claude_add_dirs(wt),
     ],
     "codex": lambda wt, p: [
         "codex", "exec", "--cd", str(wt), *_flags("codex"),
@@ -171,6 +196,7 @@ def _spawn_once(flavor: str, worktree: Path, prompt_text: str,
     with open(stdout_path, "ab") as so, open(stderr_path, "ab") as se:
         proc = subprocess.Popen(
             argv, cwd=str(worktree), stdout=so, stderr=se, env=env,
+            stdin=subprocess.DEVNULL,
             start_new_session=True,
         )
         if shutil.which("caffeinate"):
