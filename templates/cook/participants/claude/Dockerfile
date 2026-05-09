@@ -1,21 +1,11 @@
-FROM node:22-slim
+# Per-cook claude image. Heavy bits live in mv-base-claude; this image just
+# layers in the entrypoint. mv-base-claude is built once by
+# `multivarka build-base` (cook auto-builds it if missing).
+FROM mv-base-claude:latest
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates curl \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN npm install -g @anthropic-ai/claude-code
-
-# claude refuses --dangerously-skip-permissions when running as root.
-# `node` user (uid=1000) ships with the node:22-slim image.
-RUN mkdir -p /work /home/node/.claude \
- && chown -R node:node /work /home/node/.claude
-
+USER root
 COPY entrypoint.sh /usr/local/bin/mv-entrypoint
 RUN chmod +x /usr/local/bin/mv-entrypoint
-
 USER node
-WORKDIR /work
-ENV HOME=/home/node
 
 ENTRYPOINT ["/usr/local/bin/mv-entrypoint"]

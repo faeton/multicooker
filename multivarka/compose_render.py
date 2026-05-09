@@ -1,13 +1,14 @@
 """Render cooks/<task>/compose.yaml from brief.yaml + cook_dir layout.
 
-v1 design choices (intentionally minimal — see docs/implementation-status.md):
+Network model:
 
-- Single bridge network per cook (`mv-<task>`). Egress to internet allowed.
-  Participants share the same network; they don't actively talk to each
-  other, but full inter-container DNS isolation is a TODO. The trust model
-  is "container is sandbox" — participants can't escape to the host.
-- No allowlist proxy. Plain bridge. Add via compose.override.yaml if a
-  task is sensitive.
+- One bridge network per participant (`mv-<task>-net-<participant>`) and
+  one per judge. Each service joins only its own network, so containers
+  inside the same cook cannot resolve or reach each other — a participant
+  can't peek at another's `/work/out/` over the network, and a judge
+  can't see participants. Egress to the internet stays open: participants
+  may legitimately need npm/pypi/github/docs to do their task. The
+  sandbox guarantee is the container itself, not the network.
 - Auth: bind-mount RO from cooks/<task>/.auth/<flavor>/ (built by creds.py).
 - Per-flavor entrypoint reads /work/PROMPT.txt and invokes the CLI with
   canonical sandbox argv. The PROMPT.txt is also bind-mounted RO.
@@ -28,16 +29,20 @@ def render_compose(cook_dir: Path, cfg: dict) -> Path:
     project = f"mv-{name}".lower().replace("_", "-")
 
     services: dict = {}
+    networks: dict = {}
 
-    # Participants
+    # Participants — each on its own bridge so they can't see each other.
     for p in cfg.get("participants", []):
         pname = p["name"]
         flavor = p.get("flavor", pname)
+        net = f"net-participant-{pname}"
+        networks[net] = {"driver": "bridge"}
         services[f"participant-{pname}"] = _participant_service(
             cook_dir=cook_dir,
             participant_name=pname,
             flavor=flavor,
             project=project,
+            network=net,
             model=p.get("model"),
         )
 
@@ -46,21 +51,20 @@ def render_compose(cook_dir: Path, cfg: dict) -> Path:
     for j in cfg.get("judges", []):
         jname = j["name"]
         flavor = j.get("flavor", jname)
+        net = f"net-judge-{jname}"
+        networks[net] = {"driver": "bridge"}
         services[f"judge-{jname}"] = _judge_service(
             cook_dir=cook_dir,
             judge_name=jname,
             flavor=flavor,
             project=project,
+            network=net,
             model=j.get("model"),
         )
 
     compose = {
         "name": project,
-        "networks": {
-            "default": {
-                "driver": "bridge",
-            },
-        },
+        "networks": networks,
         "services": services,
     }
 
@@ -93,7 +97,7 @@ def _auth_volumes(flavor: str, cook_dir: Path) -> list[str]:
 
 
 def _participant_service(cook_dir: Path, participant_name: str,
-                         flavor: str, project: str,
+                         flavor: str, project: str, network: str,
                          model: str | None = None) -> dict:
     cd = cook_dir.resolve()
     image = f"{project}-{flavor}"
@@ -112,6 +116,7 @@ def _participant_service(cook_dir: Path, participant_name: str,
         "container_name": f"{project}-participant-{participant_name}",
         "working_dir": "/work",
         "environment": env,
+        "networks": [network],
         "volumes": [
             f"{cd}/BRIEF.md:/work/BRIEF.md:ro",
             f"{cd}/raw:/work/raw:ro",
@@ -126,7 +131,8 @@ def _participant_service(cook_dir: Path, participant_name: str,
 
 
 def _judge_service(cook_dir: Path, judge_name: str, flavor: str,
-                   project: str, model: str | None = None) -> dict:
+                   project: str, network: str,
+                   model: str | None = None) -> dict:
     cd = cook_dir.resolve()
     image = f"{project}-{flavor}-judge"
     judge_ctx = cd / "judge" / flavor
@@ -152,6 +158,7 @@ def _judge_service(cook_dir: Path, judge_name: str, flavor: str,
         "container_name": f"{project}-judge-{judge_name}",
         "working_dir": "/work",
         "environment": env,
+        "networks": [network],
         "volumes": [
             f"{cd}/judging/_work-{judge_name}:/work:rw",
             *_auth_volumes(flavor, cook_dir),

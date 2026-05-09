@@ -7,29 +7,6 @@
 
 ## Приоритет 0 — следующая сессия
 
-- [ ] Сетевая модель в compose-render. Сейчас один обычный bridge,
-  все участники в одной сети, egress открыт. Целевой вариант:
-  - `clients-<task>` сеть `internal: true` (между участниками
-    видимости нет, в интернет — нет);
-  - отдельная `llm-egress` сеть, к которой подключён
-    allowlist-proxy, и только проксирующая известные домены LLM
-    API (anthropic, openai, googleapis + auth-домены).
-  - На время разработки прокси можно сделать опциональным
-    (compose.override.yaml), но дефолт должен ехать с internal
-    isolation хотя бы между участниками.
-- [ ] `multivarka doctor` уже есть, но
-  - [ ] Расширить: проверять, что для всех flavors из brief.yaml
-    есть Dockerfile в `templates/cook/participants/<flavor>/`.
-  - [ ] Добавить флаг `--strict`, чтобы не было warn-only по
-    отсутствию Dockerfile, а сразу exit=1.
-- [ ] Image size. Сейчас на каждый cook ставятся независимые
-  `mv-<task>-{claude,codex,gemini}` поверх node:22-slim, каждый
-  ~600 MB. Фактический shared слой (npm i -g <cli>) ставится 3
-  раза. Решения:
-  - shared `mv-base` image, локально один раз; cook'и наследуются
-    `FROM mv-base` и добавляют только entrypoint;
-  - либо общая base через docker bake / buildx с named target.
-
 ## Приоритет 1 — после v0.2 cook'а
 
 - [ ] Tests:
@@ -139,6 +116,23 @@
 
 ## Сделано (история, для ориентира)
 
+- ✅ Shared base images: `templates/base/<flavor>/Dockerfile` ставит
+  тяжёлое (node:22-slim + apt + `npm i -g <cli>` + `node` user).
+  Cook participant Dockerfile укоротился до `FROM mv-base-<flavor>`
+  + entrypoint — build cook-образа ~1 сек вместо 2-3 минут. CLI:
+  `multivarka build-base [<flavor>...] [--force]`. cook/refine/
+  judge сами зовут `base_images.ensure_built()` перед compose
+  build, так что для пользователя это прозрачно.
+- ✅ `multivarka doctor` расширен: проверка Dockerfile per flavor
+  (FAIL если нет ни в `cooks/<task>/participants/<flavor>/` ни в
+  templates), проверка наличия `mv-base-<flavor>:latest` (WARN по
+  умолчанию, FAIL под `--strict`).
+- ✅ Сетевая изоляция между контейнерами одного cook'а: каждый
+  участник и каждый судья — на собственной bridge-сети
+  (`net-participant-<name>` / `net-judge-<name>`). Egress в
+  интернет открыт намеренно (участникам нужен npm/pypi/docs);
+  threat model: sandbox = контейнер, не сеть. Жёсткий allowlist
+  оставлен как опт-ин через `compose.override.yaml` per cook.
 - ✅ `compose_runner.py` — build / up / logs-follow / wait / timeout / rm,
   rate-limit detection (мигрировал в `runner_common.py`),
   статусы ok/rate_limited/timed_out/non_zero_exit.

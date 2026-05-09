@@ -15,6 +15,7 @@ from .report import report
 from .clean import clean
 from .refine import refine
 from .doctor import doctor
+from . import base_images
 
 
 def _csv(s: str | None) -> list[str] | None:
@@ -37,6 +38,17 @@ def main(argv: list[str] | None = None) -> int:
     pd.add_argument("--root", default="cooks")
     pd.add_argument("--participants", default=None,
                     help="Override flavors to check (comma-separated)")
+    pd.add_argument("--strict", action="store_true",
+                    help="Treat warnings (missing base image) as failures (exit=1)")
+
+    # build-base
+    pbb = sub.add_parser("build-base",
+                         help="Build shared mv-base-<flavor> images "
+                              "(node:22-slim + npm i -g <cli>)")
+    pbb.add_argument("flavors", nargs="*",
+                     help="Flavors to build (default: all under templates/base/)")
+    pbb.add_argument("--force", action="store_true",
+                     help="Rebuild even if the image already exists")
 
     # new
     pn = sub.add_parser("new", help="Scaffold a new cook (task) folder")
@@ -101,7 +113,20 @@ def main(argv: list[str] | None = None) -> int:
         return doctor(
             name=args.name, root=Path(args.root),
             participants_override=_csv(args.participants),
+            strict=args.strict,
         )
+    if args.cmd == "build-base":
+        flavors = args.flavors or sorted(
+            d.name for d in base_images.TEMPLATE_DIR.iterdir()
+            if d.is_dir() and (d / "Dockerfile").exists()
+        )
+        for flavor in flavors:
+            try:
+                base_images.build(flavor, force=args.force)
+            except Exception as e:                                            # noqa: BLE001
+                print(f"build-base {flavor}: {e}", file=sys.stderr)
+                return 1
+        return 0
     if args.cmd == "new":
         return new_cook(
             name=args.name, root=Path(args.root),

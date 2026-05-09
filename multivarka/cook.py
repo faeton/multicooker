@@ -29,7 +29,7 @@ from pathlib import Path
 
 import yaml
 
-from . import compose_render, compose_runner, creds
+from . import base_images, compose_render, compose_runner, creds
 from .runner_common import RunResult
 
 
@@ -204,6 +204,12 @@ def cook(name: str, root: Path,
     # Worktrees BEFORE build — compose refuses to mount missing files.
     for p in participants:
         _setup_worktree(cook_dir, p["name"], prompt_text)
+
+    try:
+        base_images.ensure_built(flavors_needed)
+    except Exception as e:                                                   # noqa: BLE001
+        print(f"[cook] base image build failed: {e}", flush=True)
+        return 2
 
     services = [f"participant-{p['name']}" for p in participants]
     try:

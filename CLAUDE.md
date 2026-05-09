@@ -57,9 +57,13 @@ gemini --yolo -p "<prompt>"
 - но при этом он не сможет дотянуться до хоста, потому что
   контейнер — это и есть его sandbox.
 
-Сетевая изоляция — отдельным слоем: `clients-<task>` сеть
-`internal: true`, egress только через явную control-сеть с
-allowlist-доменами LLM API.
+Сетевая изоляция между контейнерами: каждый участник и каждый
+судья — на собственной bridge-сети (`net-participant-<name>` /
+`net-judge-<name>`). Контейнеры одного cook'а не видят друг друга
+по DNS/IP, поэтому участник не может подсмотреть чужой `out/`.
+Egress в интернет открыт: участники легитимно ходят за npm/pypi/
+docs/github для решения задачи. Sandbox обеспечивает контейнер,
+не сеть.
 
 ## Канонический поток
 
@@ -94,15 +98,17 @@ multivarka report <task>              # → cooks/<task>/leaderboard.md
 
 ## Изоляция (как в reproxy/arena)
 
-- Каждый участник — свой контейнер на сети `clients-<task>`
-  (`internal: true`). Видит: `/work/BRIEF.md` (RO), `/work/raw/`
-  (RO), `/work/out/` (RW), свои creds. **Не видит**: других
-  участников, `judging/`, маппинг `A↔flavor`, остальной репо.
-- Egress к LLM API — через `llm-egress` сеть с allowlist'ом
-  доменов: `api.anthropic.com`, `api.openai.com`,
-  `generativelanguage.googleapis.com` + auth-домены каждого.
-- Судья — отдельный контейнер, своя сеть, доступа к участникам
-  нет. Получает **копии** (не симлинки) `BRIEF.md` /
+- Каждый участник — свой контейнер на собственной bridge-сети
+  `net-participant-<name>`. Видит: `/work/BRIEF.md` (RO),
+  `/work/raw/` (RO), `/work/out/` (RW), свои creds. **Не видит**:
+  других участников (они в других сетях), `judging/`, маппинг
+  `A↔flavor`, остальной репо.
+- Egress в интернет открыт. Это сознательно: участникам нужен
+  доступ к LLM API + npm/pypi/github/docs. Sandbox-гарантия —
+  контейнер, а не сеть. Если конкретный cook требует жёсткого
+  allowlist'а, это делается локальным `compose.override.yaml`.
+- Судья — отдельный контейнер на своей `net-judge-<name>`,
+  доступа к участникам нет. Получает **копии** (не симлинки) `BRIEF.md` /
   `JUDGE_BRIEF.md` / `raw/` / анонимизированных
   `submissions/{A,B,C}/`. Симлинки внутрь sandbox-allowlist'а CLI
   не работают — баг #1 из reproxy/arena.

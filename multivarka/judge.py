@@ -27,7 +27,7 @@ from pathlib import Path
 
 import yaml
 
-from . import compose_render, compose_runner, creds
+from . import base_images, compose_render, compose_runner, creds
 from .cook import _snapshot_creds_or_die
 
 
@@ -177,6 +177,12 @@ def judge(name: str, root: Path,
     if rc is not None:
         return rc
     compose_render.render_compose(cook_dir, cfg)
+
+    try:
+        base_images.ensure_built(flavors_needed)
+    except Exception as e:                                                   # noqa: BLE001
+        print(f"[judge] base image build failed: {e}", flush=True)
+        return 2
 
     any_score = False
     for j in judges_cfg:

@@ -7,32 +7,44 @@ docker compose project, чтобы сети и volume'ы были изолиро
 ## Картинка
 
 ```
-                cooks/<task>/  (compose project: mv-<task>)
-                 │
-   ┌─────────────┼──────────────┬───────────────┐
-   ▼             ▼              ▼               ▼
-┌──────┐     ┌──────┐       ┌──────┐        ┌──────┐
-│claude│     │codex │       │gemini│        │judges│  (запускаются после cook)
-│  c1  │     │  c2  │       │  c3  │        │  jX  │
-└───┬──┘     └───┬──┘       └───┬──┘        └──┬───┘
-    │            │              │              │
-    │  net: clients-<task>      │   net: judging-<task>
-    │  (internal: true)         │   (internal: true)
-    │                           │
-    └──── llm-egress (control) ─┴────► api.anthropic.com / openai / google
-                                       (allowlisted egress only)
+              cooks/<task>/  (compose project: mv-<task>)
+               │
+   ┌───────────┼───────────┬───────────┬───────────┐
+   ▼           ▼           ▼           ▼           ▼
+┌──────┐   ┌──────┐    ┌──────┐    ┌──────┐    ┌──────┐
+│claude│   │codex │    │gemini│    │judge1│    │judge2│
+└──┬───┘   └──┬───┘    └──┬───┘    └──┬───┘    └──┬───┘
+   │          │           │           │           │
+   ▼          ▼           ▼           ▼           ▼
+ net-      net-         net-       net-        net-
+ part-     part-        part-      judge-      judge-
+ claude    codex        gemini     <name>      <name>
+   │          │           │           │           │
+   └──────────┴───────────┴───────────┴───────────┘
+                          │
+                          ▼  egress в интернет открыт
+                     (npm / pypi / github / LLM API)
 ```
 
 ## Сети
 
-- `clients-<task>` — internal. На ней все участники. Между собой
-  они не связаны (compose не проксирует контейнер-к-контейнеру если
-  это не нужно, плюс в `network_mode: bridge` без link'ов имена
-  чужих контейнеров не резолвятся).
-- `judging-<task>` — internal. На ней только судьи и control.
-- `llm-egress` — bridge с egress в интернет, но через прокси с
-  allowlist-доменами (см. `docs/auth.md`). В неё подключены только
-  участники / судьи; никаких посторонних сервисов.
+Каждый участник и каждый судья — на собственной bridge-сети
+(`net-participant-<name>` / `net-judge-<name>`). Это даёт два
+свойства:
+
+- Контейнеры одного cook'а **не видят друг друга**: они в разных
+  сетях, имена и IP не резолвятся. Участник не может подсмотреть
+  чужой `/work/out/` через сеть, судья не может пингануть
+  участников.
+- **Egress в интернет открыт.** Участникам легитимно нужен npm /
+  pypi / github / docs / LLM API для решения задачи. Жёсткий
+  allowlist ломает реальные кейсы (пакеты, dataset, документация),
+  поэтому дефолт — открытый egress, а sandbox-гарантия лежит на
+  контейнере (cgroup, namespaces, RO bind-mounts), не на сети.
+
+Если конкретный cook требует строгого allowlist'а (sensitive raw,
+audit-режим), он добавляется локальным `compose.override.yaml` —
+это решение на уровне cook'а, не дефолт.
 
 ## Контейнер участника
 
@@ -75,8 +87,8 @@ gemini --yolo -p "$PROMPT"
 Эти флаги безопасны именно потому, что:
 - контейнер изолирован от host'а (cgroup, network namespace, no
   bind-mounts наружу `/work` и creds);
-- сеть `clients-<task>` `internal: true`, egress только на
-  allowlist;
+- участник на собственной bridge-сети, других участников и судей
+  по сети не видит;
 - `out/` — единственный rw bind-mount, повреждать там нечего
   кроме результата самого участника.
 

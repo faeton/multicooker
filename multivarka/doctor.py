@@ -25,7 +25,11 @@ from pathlib import Path
 
 import yaml
 
-from . import creds
+from . import base_images, creds
+
+
+PKG_ROOT = Path(__file__).resolve().parents[1]
+TEMPLATES_PARTICIPANTS = PKG_ROOT / "templates" / "cook" / "participants"
 
 
 def _check_docker() -> tuple[bool, str]:
@@ -53,6 +57,36 @@ def _check_compose() -> tuple[bool, str]:
     return True, f"docker compose v{out.stdout.strip()}"
 
 
+def _check_dockerfile(flavor: str, cook_dir: Path | None) -> tuple[bool, str]:
+    """Dockerfile must exist either in the cook (if one is given) or in templates."""
+    if cook_dir is not None:
+        cook_df = cook_dir / "participants" / flavor / "Dockerfile"
+        if cook_df.exists():
+            return True, f"Dockerfile present at {cook_df.relative_to(cook_dir)}"
+    tmpl_df = TEMPLATES_PARTICIPANTS / flavor / "Dockerfile"
+    if tmpl_df.exists():
+        return True, f"template Dockerfile present at templates/cook/participants/{flavor}/"
+    where = (
+        f"cooks/<task>/participants/{flavor}/Dockerfile or "
+        f"templates/cook/participants/{flavor}/Dockerfile"
+    )
+    return False, f"no Dockerfile for flavor '{flavor}'. Add {where}."
+
+
+def _check_base_image(flavor: str) -> tuple[bool, str]:
+    """Base image is optional; cook auto-builds it on first run."""
+    if not (base_images.template_dir(flavor) / "Dockerfile").exists():
+        # No base template means this flavor has a self-contained cook
+        # Dockerfile (or no Dockerfile at all — covered by _check_dockerfile).
+        return True, "no base template (cook Dockerfile is self-contained)"
+    if base_images.is_built(flavor):
+        return True, f"{base_images.image_tag(flavor)} present"
+    return False, (
+        f"{base_images.image_tag(flavor)} not built — cook will build it on "
+        f"first run, or run `multivarka build-base {flavor}` now."
+    )
+
+
 def _check_flavor(flavor: str) -> tuple[bool, str]:
     """Dry-run the snapshot for one flavor into a tempdir; report cleanly."""
     with tempfile.TemporaryDirectory(prefix="mv-doctor-") as td:
@@ -70,8 +104,10 @@ def _check_flavor(flavor: str) -> tuple[bool, str]:
 
 
 def doctor(name: str | None, root: Path,
-           participants_override: list[str] | None) -> int:
+           participants_override: list[str] | None,
+           strict: bool = False) -> int:
     flavors: list[str]
+    cook_dir: Path | None = None
     if name:
         cook_dir = root / name if not Path(name).is_absolute() else Path(name)
         brief_yaml = cook_dir / "brief.yaml"
@@ -90,7 +126,10 @@ def doctor(name: str | None, root: Path,
         flavors = ["claude", "codex", "gemini"]
 
     failed = 0
+    warned = 0
     print(f"checking docker-mode prerequisites for flavors: {', '.join(flavors)}")
+    if strict:
+        print("(--strict: warnings count as failures)")
     print()
 
     for label, fn in [("docker", _check_docker), ("docker compose", _check_compose)]:
@@ -101,9 +140,29 @@ def doctor(name: str | None, root: Path,
             failed += 1
 
     for flavor in flavors:
+        # Dockerfile presence — always blocking (cook will fail on build).
+        ok, msg = _check_dockerfile(flavor, cook_dir)
+        marker = "OK " if ok else "FAIL"
+        print(f"  [{marker}] {flavor} dockerfile: {msg}")
+        if not ok:
+            failed += 1
+
+        # Base image — warn by default (cook auto-builds), fail under --strict.
+        ok, msg = _check_base_image(flavor)
+        if ok:
+            print(f"  [OK ] {flavor} base image: {msg}")
+        else:
+            marker = "FAIL" if strict else "WARN"
+            print(f"  [{marker}] {flavor} base image: {msg}")
+            if strict:
+                failed += 1
+            else:
+                warned += 1
+
+        # Creds — always blocking.
         ok, msg = _check_flavor(flavor)
         marker = "OK " if ok else "FAIL"
-        print(f"  [{marker}] {flavor}: {msg}")
+        print(f"  [{marker}] {flavor} creds: {msg}")
         if not ok:
             failed += 1
 
@@ -112,5 +171,9 @@ def doctor(name: str | None, root: Path,
         print(f"doctor: {failed} check(s) failed — fix the FAIL lines above before "
               f"running `cook`.")
         return 1
-    print("doctor: all good. ready for `multivarka cook`.")
+    if warned:
+        print(f"doctor: ok with {warned} warning(s). Ready for `multivarka cook` "
+              f"(missing pieces will be built on first run).")
+    else:
+        print("doctor: all good. ready for `multivarka cook`.")
     return 0

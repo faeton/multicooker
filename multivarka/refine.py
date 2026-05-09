@@ -24,7 +24,7 @@ from pathlib import Path
 
 import yaml
 
-from . import compose_render, compose_runner, creds
+from . import base_images, compose_render, compose_runner, creds
 from .cook import _seal_for_judging, _snapshot_creds_or_die
 from .runner_common import RunResult
 
@@ -255,6 +255,12 @@ def refine(name: str, root: Path,
         _setup_worktree_refine(cook_dir, p["name"], prompts[p["name"]])
 
     # 4. Build images (cached if Dockerfiles unchanged).
+    try:
+        base_images.ensure_built(flavors_needed)
+    except Exception as e:                                                  # noqa: BLE001
+        print(f"[refine] base image build failed: {e}", flush=True)
+        return 2
+
     services = [f"participant-{p['name']}" for p in participants]
     try:
         compose_runner.build_images(cook_dir, project, services)
