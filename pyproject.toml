@@ -18,4 +18,9 @@ multivarka = "multivarka.cli:main"
 include = ["multivarka*"]
 
 [tool.setuptools.package-data]
-"multivarka" = ["../templates/**/*"]
+"multivarka" = [
+    "templates/**/*",
+    "templates/**/.gitignore",
+    "templates/**/.gitkeep",
+    "templates/**/.dockerignore",
+]

@@ -17,7 +17,6 @@ Run shapes:
 
 from __future__ import annotations
 
-import json
 import subprocess
 import sys
 import tempfile
@@ -28,8 +27,9 @@ import yaml
 from . import base_images, creds
 
 
-PKG_ROOT = Path(__file__).resolve().parents[1]
-TEMPLATES_PARTICIPANTS = PKG_ROOT / "templates" / "cook" / "participants"
+TEMPLATES_PARTICIPANTS = (
+    Path(__file__).resolve().parent / "templates" / "cook" / "participants"
+)
 
 
 def _check_docker() -> tuple[bool, str]:

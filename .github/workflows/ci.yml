@@ -1,0 +1,52 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . pytest ruff build
+
+      - name: Lint (ruff)
+        # Soft for now: only catch syntax errors and obvious bugs.
+        # Tighten later by adding rules to pyproject.toml.
+        run: ruff check multivarka/ tests/ --select=E9,F
+
+      - name: Unit tests
+        # Integration test (test_integration_dummy.py) auto-skips when docker
+        # isn't reachable, so it's safe to run unconditionally on GH runners
+        # which do ship with docker. If the daemon is up, dummy cycles in ~10s.
+        run: pytest -q
+
+      - name: Build wheel
+        run: python -m build --wheel
+
+      - name: Smoke install from wheel
+        run: |
+          tmpvenv=$(mktemp -d)/venv
+          python -m venv "$tmpvenv"
+          "$tmpvenv/bin/pip" install -q dist/multivarka-*.whl
+          "$tmpvenv/bin/multivarka" --version
+          "$tmpvenv/bin/multivarka" new install-smoke \
+              --participants a=dummy --root "$tmpvenv/cooks"
+          test -f "$tmpvenv/cooks/"*"-install-smoke/participants/dummy/Dockerfile"

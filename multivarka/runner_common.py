@@ -77,28 +77,36 @@ def detect_rate_limit(flavor: str, text: str) -> tuple[bool, int, str]:
             evidence = text[max(0, m.start() - 80): m.end() + 80].replace("\n", " ").strip()
         if retry_after > 0:
             continue
-        if m.groups():
-            try:
-                if pat.pattern.startswith("resets? at") or pat.pattern.startswith("try again at"):
-                    hh, mm = int(m.group(1)), int(m.group(2))
-                    ampm = (m.group(3) or "").lower()
-                    if ampm == "pm" and hh < 12:
-                        hh += 12
-                    if ampm == "am" and hh == 12:
-                        hh = 0
-                    now = datetime.now()
-                    target = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
-                    if target <= now:
-                        target = target.replace(day=target.day + 1)
-                    retry_after = int((target - now).total_seconds())
-                elif "in" in pat.pattern:
-                    n = int(m.group(1))
-                    unit = (m.group(2) or "m").lower()
-                    retry_after = n * (3600 if unit.startswith("h") else 60)
-                elif "retry.after" in pat.pattern:
-                    retry_after = int(m.group(1))
-            except (ValueError, IndexError):
-                retry_after = 0
+        groups = m.groups()
+        if not groups:
+            continue
+        # Three shapes of retry-after extraction, distinguished by what
+        # group(2) holds (or its absence):
+        #   hh:mm          → group(2) is digits (minute component)
+        #   N hours/mins   → group(2) is a word ("hour"/"minute"/...)
+        #   retry-after: N → only one group, the seconds value
+        try:
+            g2 = groups[1] if len(groups) >= 2 else None
+            if g2 and g2.isdigit():
+                hh, mm = int(groups[0]), int(g2)
+                ampm = (groups[2] if len(groups) >= 3 and groups[2] else "").lower()
+                if ampm == "pm" and hh < 12:
+                    hh += 12
+                if ampm == "am" and hh == 12:
+                    hh = 0
+                now = datetime.now()
+                target = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+                if target <= now:
+                    target = target.replace(day=target.day + 1)
+                retry_after = int((target - now).total_seconds())
+            elif g2:
+                n = int(groups[0])
+                unit = g2.lower()
+                retry_after = n * (3600 if unit.startswith("h") else 60)
+            else:
+                retry_after = int(groups[0])
+        except (ValueError, IndexError):
+            retry_after = 0
     return rate_limited, retry_after, evidence
 
 

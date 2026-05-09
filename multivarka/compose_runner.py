@@ -15,9 +15,7 @@ Building the images is the caller's job (cook.py runs
 
 from __future__ import annotations
 
-import os
 import subprocess
-import threading
 import time
 from pathlib import Path
 

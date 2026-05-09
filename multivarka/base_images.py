@@ -14,8 +14,7 @@ import subprocess
 from pathlib import Path
 
 
-PKG_ROOT = Path(__file__).resolve().parents[1]
-TEMPLATE_DIR = PKG_ROOT / "templates" / "base"
+TEMPLATE_DIR = Path(__file__).resolve().parent / "templates" / "base"
 
 
 def image_tag(flavor: str) -> str:

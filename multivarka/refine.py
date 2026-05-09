@@ -24,7 +24,7 @@ from pathlib import Path
 
 import yaml
 
-from . import base_images, compose_render, compose_runner, creds
+from . import base_images, compose_render, compose_runner
 from .cook import _seal_for_judging, _snapshot_creds_or_die
 from .runner_common import RunResult
 

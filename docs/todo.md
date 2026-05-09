@@ -9,26 +9,24 @@
 
 ## Приоритет 1 — после v0.2 cook'а
 
-- [ ] Tests:
-  - [ ] unit для `new_cook.parse_participant` (NAME, NAME=FLAVOR,
-    дубли, пустые сегменты);
-  - [ ] unit для `add_participant` (idempotency, missing brief);
-  - [ ] unit для `runner_common.detect_rate_limit` по sample
-    stdout/stderr каждого CLI;
-  - [ ] unit для `judge._anonymize` (mapping создаётся, в judge
-    input нет flavor names);
-  - [ ] unit для `report` (агрегация, missing/invalid scores,
-    total=0).
+- [x] Tests: parse_participant, add_participant, detect_rate_limit
+  (с fixture'ами per CLI), `judge._anonymize`, `report`
+  агрегация. Integration smoke через subprocess на dummy flavor
+  (auto-skip если docker не доступен). 40 тестов, 7-8 секунд.
 - [x] Integration smoke без реальных LLM CLI: `dummy` flavor готов
   (`templates/cook/participants/dummy/`, alpine-based, no auth).
   Один entrypoint покрывает participant- и judge-режимы (branch
   на `MULTIVARKA_JUDGE`). Полный `new→cook→judge→report` цикл
   отрабатывает за ~10 секунд без подписочных кредов.
-- [ ] Packaging:
-  - [ ] перенести templates внутрь `multivarka/templates/`;
-  - [ ] `pip install dist/*.whl && multivarka new smoke` smoke;
-  - [ ] `.dockerignore` в каждый participant template.
-- [ ] CI: lint (ruff), tests, package build, secret scan.
+- [x] Packaging: `templates/` переехал внутрь `multivarka/templates/`;
+  все Path-ссылки отвязаны от `parents[1]` (раньше работало только
+  из репо, теперь работает после `pip install`). `.dockerignore`
+  в каждом participant-шаблоне. Wheel build + smoke install в
+  чистый venv проверены вручную.
+- [x] CI: GitHub Actions (`.github/workflows/ci.yml`): ruff
+  (E9+F), pytest на 3.10/3.12, wheel build, smoke install.
+  Secret scan — пока не добавлен (отдельный пункт ниже).
+- [ ] CI: gitleaks/trufflehog для secret scan.
 
 ## Приоритет 2 — перед публикацией
 

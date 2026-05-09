@@ -10,8 +10,7 @@ from pathlib import Path
 import yaml
 
 
-PKG_ROOT = Path(__file__).resolve().parents[1]
-TEMPLATE_DIR = PKG_ROOT / "templates" / "cook"
+TEMPLATE_DIR = Path(__file__).resolve().parent / "templates" / "cook"
 
 _DATE_PREFIX_RE = re.compile(r"^\d{6}-")
 
@@ -63,8 +62,8 @@ def new_cook(name: str, root: Path, participants: list[str]) -> int:
     missing = [f for f in seen_flavors if not _flavor_template_exists(f)]
     if missing:
         print(f"warn: no Dockerfile template for flavor(s): {missing}", flush=True)
-        print(f"      add templates/cook/participants/<flavor>/{{Dockerfile,entrypoint.sh}} "
-              f"before running cook.")
+        print("      add templates/cook/participants/<flavor>/{Dockerfile,entrypoint.sh} "
+              "before running cook.")
 
     # Disallow duplicate participant names (flavors can repeat).
     names = [n for n, _ in parsed]

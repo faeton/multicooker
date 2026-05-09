@@ -19,7 +19,6 @@ as a JSON string in the SAME shape Linux expects. We extract via
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 import sys
