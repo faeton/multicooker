@@ -96,6 +96,44 @@ def _setup_worktree(cook_dir: Path, participant: str, prompt_text: str) -> Path:
     return wt
 
 
+def _write_trace(cook_dir: Path, participant: dict, mode: str,
+                 round_num: int | None, started_at: str,
+                 res: RunResult | None, status: str,
+                 error: str | None = None) -> None:
+    """Per-cell trace.json next to work/<p>/. Cheap structured artifact for
+    rejudge / debugging without re-running the LLM. Overwrites previous
+    round's trace — round-N traces also live in rounds/<N>/<p>/trace.json
+    via the existing snapshot path (refine snapshots out/, trace.json sits
+    in work/<p>/, not in out/, so it does NOT get auto-snapshotted; see
+    docs/design-notes.md if we ever decide to keep them per-round)."""
+    name = participant["name"]
+    trace_path = cook_dir / "work" / name / "trace.json"
+    trace = {
+        "name": name,
+        "flavor": participant.get("flavor", name),
+        "model": participant.get("model"),
+        "mode": mode,
+        "round_num": round_num,
+        "started_at": started_at,
+        "finished_at": datetime.now(timezone.utc).isoformat(),
+        "status": status,
+    }
+    if error is not None:
+        trace["error"] = error
+    if res is not None:
+        trace.update({
+            "exit_code": res.exit_code,
+            "duration_s": round(res.duration_s, 1),
+            "rate_limited": res.rate_limited,
+            "rate_limit_evidence": res.rate_limit_evidence,
+            "retry_after_s": res.retry_after_s,
+            "timed_out": res.timed_out,
+            "stdout_path": str(res.stdout_path),
+            "stderr_path": str(res.stderr_path),
+        })
+    trace_path.write_text(json.dumps(trace, indent=2))
+
+
 def _run_participant(cook_dir: Path, project: str, participant: dict,
                      results: dict, timeout_s: int, prompt_text: str,
                      lock: threading.Lock) -> None:
@@ -105,6 +143,7 @@ def _run_participant(cook_dir: Path, project: str, participant: dict,
     eff_timeout = int(participant.get("timeout_s", timeout_s))
     _setup_worktree(cook_dir, name, prompt_text)
     log_dir = cook_dir / "logs" / name
+    started_at = datetime.now(timezone.utc).isoformat()
     print(f"[cook] {name} ({flavor}): launching service {service} "
           f"(timeout {eff_timeout}s)", flush=True)
     try:
@@ -118,6 +157,8 @@ def _run_participant(cook_dir: Path, project: str, participant: dict,
                 "name": name, "flavor": flavor, "status": "error",
                 "error": str(e), "duration_s": 0.0,
             }
+        _write_trace(cook_dir, participant, mode="cook", round_num=1,
+                     started_at=started_at, res=None, status="error", error=str(e))
         print(f"[cook] {name}: FAILED to launch: {e}", flush=True)
         return
 
@@ -137,6 +178,8 @@ def _run_participant(cook_dir: Path, project: str, participant: dict,
             "stdout": str(res.stdout_path),
             "stderr": str(res.stderr_path),
         }
+    _write_trace(cook_dir, participant, mode="cook", round_num=1,
+                 started_at=started_at, res=res, status=status)
     _seal_for_judging(cook_dir, name)
     print(f"[cook] {name}: {status} (exit={res.exit_code}, {res.duration_s:.1f}s)", flush=True)
 

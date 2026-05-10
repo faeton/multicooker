@@ -52,6 +52,8 @@
 - [ ] Расширить `creds.py` для случая, когда у пользователя
   несколько Anthropic/Google аккаунтов и нужно выбирать профиль.
   Сейчас Keychain entry один, gemini config один.
+  Дизайн отложен — см. `docs/design-notes.md` §"Multi-account
+  creds".
 - [x] Документировать риск: подписочные OAuth-файлы монтируются в
   контейнер и доступны агенту внутри sandbox. Compromised CLI
   может их прочитать. Это плата за headless подписочную auth.
@@ -101,16 +103,23 @@
 
 ## Идеи из аналогов
 
-- [ ] Replayable traces (agentevals): сохранять структурированный
-  run trace, чтобы можно было пересуживать без повторного cook.
+- [x] Replayable traces (light): per-cell `trace.json`
+  (prompt/model/exit/duration/started_at) пишется в
+  `work/<p>/trace.json`. `multivarka rejudge <task>` пере-сильит
+  `_inbox/` из текущих `work/<p>/out/` и запустит судей заново
+  без повторного cook'а. Полная structured-trace версия (tool
+  calls / replay через другой CLI) отложена — см.
+  `docs/design-notes.md` §"Replayable traces — full version".
 - [ ] Registry-подход (OpenAI Evals): versioned eval/task specs,
-  шарящиеся как шаблоны.
+  шарящиеся как шаблоны. Отложено — см. `docs/design-notes.md`
+  §"Registry / versioned task specs".
 - [x] Deterministic validators (AgentV / Iris) — валидировать
   brief.yaml до запуска. Реализовано как hand-rolled валидатор
   в `multivarka/brief_schema.py` (no extra deps), подключён в
   doctor + cook/refine/judge. Покрыто 13 тестами.
 - [ ] Sandbox-providers как у OpenHands: Docker по умолчанию,
-  remote/Kubernetes как опция.
+  remote/Kubernetes как опция. Отложено — см.
+  `docs/design-notes.md` §"Sandbox-providers / k8s".
 
 ## Не делать
 

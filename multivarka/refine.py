@@ -25,7 +25,7 @@ from pathlib import Path
 import yaml
 
 from . import base_images, compose_render, compose_runner
-from .cook import _seal_for_judging, _snapshot_creds_or_die
+from .cook import _seal_for_judging, _snapshot_creds_or_die, _write_trace
 from .runner_common import RunResult
 
 
@@ -147,6 +147,7 @@ def _setup_worktree_refine(cook_dir: Path, participant: str,
 
 def _run_one(cook_dir: Path, project: str, participant: dict,
              prompt_text: str, timeout_s: int, results: dict,
+             round_num: int,
              lock: threading.Lock) -> None:
     name = participant["name"]
     flavor = participant.get("flavor", name)
@@ -154,6 +155,7 @@ def _run_one(cook_dir: Path, project: str, participant: dict,
     eff_timeout = int(participant.get("timeout_s", timeout_s))
     _setup_worktree_refine(cook_dir, name, prompt_text)
     log_dir = cook_dir / "logs" / name
+    started_at = datetime.now(timezone.utc).isoformat()
     print(f"[refine] {name} ({flavor}): launching service {service} "
           f"(timeout {eff_timeout}s)", flush=True)
     try:
@@ -167,6 +169,8 @@ def _run_one(cook_dir: Path, project: str, participant: dict,
                 "name": name, "flavor": flavor, "status": "error",
                 "error": str(e), "duration_s": 0.0,
             }
+        _write_trace(cook_dir, participant, mode="refine", round_num=round_num,
+                     started_at=started_at, res=None, status="error", error=str(e))
         print(f"[refine] {name}: FAILED to launch: {e}", flush=True)
         return
     status = (
@@ -185,6 +189,8 @@ def _run_one(cook_dir: Path, project: str, participant: dict,
             "stdout": str(res.stdout_path),
             "stderr": str(res.stderr_path),
         }
+    _write_trace(cook_dir, participant, mode="refine", round_num=round_num,
+                 started_at=started_at, res=res, status=status)
     _seal_for_judging(cook_dir, name)
     print(f"[refine] {name}: {status} (exit={res.exit_code}, {res.duration_s:.1f}s)",
           flush=True)
@@ -291,7 +297,7 @@ def refine(name: str, root: Path,
     for p in participants:
         t = threading.Thread(
             target=_run_one,
-            args=(cook_dir, project, p, prompts[p["name"]], timeout_s, results, lock),
+            args=(cook_dir, project, p, prompts[p["name"]], timeout_s, results, round_num, lock),
             daemon=True,
         )
         t.start()

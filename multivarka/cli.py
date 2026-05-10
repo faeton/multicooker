@@ -14,6 +14,7 @@ from .judge import judge as judge_cook
 from .report import report
 from .clean import clean
 from .refine import refine
+from .rejudge import rejudge
 from .doctor import doctor
 from .diff_rounds import diff_rounds
 from . import base_images
@@ -105,6 +106,16 @@ def main(argv: list[str] | None = None) -> int:
     pdf.add_argument("--participants", default=None,
                      help="Comma-separated participants to diff (default: all)")
 
+    # rejudge
+    prj = sub.add_parser("rejudge",
+                         help="Re-seal _inbox/ from current work/ and run judges "
+                              "again (no participant re-run; useful after "
+                              "editing JUDGE_BRIEF.md or hand-fixing out/)")
+    prj.add_argument("name")
+    prj.add_argument("--root", default="cooks")
+    prj.add_argument("--judges", default=None,
+                     help="Override judges (comma-separated)")
+
     # report
     pr = sub.add_parser("report", help="Build leaderboard.md from judge scores")
     pr.add_argument("name")
@@ -174,6 +185,11 @@ def main(argv: list[str] | None = None) -> int:
             name=args.name, root=Path(args.root),
             n=args.n, m=args.m,
             participants_override=_csv(args.participants),
+        )
+    if args.cmd == "rejudge":
+        return rejudge(
+            name=args.name, root=Path(args.root),
+            judges_override=_csv(args.judges),
         )
     if args.cmd == "report":
         return report(name=args.name, root=Path(args.root))

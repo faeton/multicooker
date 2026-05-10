@@ -75,6 +75,25 @@ def test_full_pipeline_on_dummy(tmp_path: Path):
     assert "| b |" in leaderboard
     assert "dummy-judge" in leaderboard
 
+    # trace.json was written for each participant.
+    for pname in ("a", "b"):
+        trace_path = cook / "work" / pname / "trace.json"
+        assert trace_path.exists(), f"trace.json missing for {pname}"
+        import json as _json
+        trace = _json.loads(trace_path.read_text())
+        assert trace["mode"] == "cook"
+        assert trace["status"] in {"ok", "non_zero_exit"}
+        assert "duration_s" in trace
+
+    # rejudge: edit out/RESULT.md, then rejudge picks up the change.
+    edited = "REJUDGED_MARKER\n"
+    (cook / "work" / "a" / "out" / "RESULT.md").write_text(edited)
+    res = _run(["rejudge", cook.name, "--root", str(root)], cwd=REPO_ROOT)
+    assert res.returncode == 0, res.stderr or res.stdout
+    # The sealed inbox should reflect the edit (re-sealed from work/).
+    sealed_a = (cook / "judging" / "_inbox" / "a" / "out" / "RESULT.md").read_text()
+    assert "REJUDGED_MARKER" in sealed_a
+
     # Cleanup the docker resources so we don't leak between test runs.
     _run(["clean", cook.name, "--root", str(root)], cwd=REPO_ROOT)
 

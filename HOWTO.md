@@ -387,6 +387,27 @@ participant). Полный lifecycle артефактов — в
 После refine ожидаем тот же шаг judging'а:
 `multivarka judge <task>` → `multivarka report <task>`.
 
+### `multivarka rejudge <task>`
+
+Отдельная команда: пере-судить **тот же** snapshot без повторного
+cook'а. Полезно когда правил `JUDGE_BRIEF.md` (рубрика, веса) или
+вручную поправил `out/<p>/RESULT.md`. Делает три вещи:
+
+1. Пере-сильит `judging/_inbox/<p>/` из текущего `work/<p>/out/`
+   (важно — обычный `judge` использует уже сильнутый inbox и
+   правки в `out/` пропустит).
+2. Чистит `judging/<judge>/` outbox'ы прошлых судей.
+3. Зовёт обычный `judge` flow (фрэшная анонимизация — `_mapping.json`
+   всегда пере-генерится, anti-bias guarantee не ослабляем).
+
+Параметры: `--judges` (как у `judge`).
+
+Каждый запуск участника также пишет `work/<p>/trace.json` с
+`{prompt, model, exit_code, duration_s, started_at, status}` —
+дешёвый структурированный артефакт для debugging'а и для будущих
+replay-сценариев. Полная structured-trace версия (tool calls)
+отложена — см. `docs/design-notes.md`.
+
 ## Расширения и следующие шаги
 
 Что осталось в TODO (см. `docs/todo.md` для актуального списка):
