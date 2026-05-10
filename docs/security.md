@@ -73,6 +73,42 @@ fetches." If that's not acceptable:
 - Clean-up: `multivarka clean <task>` removes `.auth/` (unless
   `--keep-creds`). `multivarka clean --all` does it for every cook.
 
+## OAuth files inside the sandbox
+
+The price of headless subscription auth: the participant's own
+OAuth/session files are bind-mounted into its container so the CLI
+can refresh tokens. This means **the agent process inside the
+sandbox can read its own creds** — `~/.claude/.credentials.json`,
+`~/.codex/auth.json`, `~/.gemini/oauth_creds.json`. A compromised
+or prompt-injected CLI could:
+
+- Print the token to its `out/` (then it lands on the host via the
+  RW bind-mount), or
+- Exfiltrate it over open egress to an attacker-controlled host.
+
+This is **by design and not mitigated**. Reasons:
+
+- Without the creds in the container, the CLI can't authenticate
+  in non-interactive mode — and the whole point of multivarka is
+  headless subscription use.
+- Per-cook bridge networks isolate participants from each other,
+  but egress to the public internet is open (npm/pypi/docs/LLM
+  APIs), so network-level exfil prevention isn't on the table by
+  default.
+- Each participant only sees its own creds — claude's container
+  has no access to codex's `auth.json`, etc.
+
+What you can do:
+
+- **Don't run multivarka against CLIs you don't trust.** Treat the
+  three official CLIs as you'd treat any other tool you log into.
+- **Rotate aggressively if a leak is suspected:** `claude /login`,
+  re-auth `codex` and `gemini` from the host. The next snapshot
+  picks up the new tokens.
+- **For high-stakes raw data**, drop a per-cook
+  `compose.override.yaml` with `network_mode: none` or a strict
+  allowlist proxy — at the cost of breaking package fetches.
+
 ## Anti-self-judging (anonymization)
 
 Anonymization happens in `multivarka/judge.py`:

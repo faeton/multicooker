@@ -52,9 +52,10 @@
 - [ ] Расширить `creds.py` для случая, когда у пользователя
   несколько Anthropic/Google аккаунтов и нужно выбирать профиль.
   Сейчас Keychain entry один, gemini config один.
-- [ ] Документировать риск: подписочные OAuth-файлы монтируются в
+- [x] Документировать риск: подписочные OAuth-файлы монтируются в
   контейнер и доступны агенту внутри sandbox. Compromised CLI
   может их прочитать. Это плата за headless подписочную auth.
+  (`docs/security.md` §"OAuth files inside the sandbox".)
 - [x] Watcher для `claudeAiOauth` ключа: regression test на mock
   блобе (`tests/test_creds_claude_shape.py`) — 4 кейса:
   good shape, unexpected shape, invalid JSON, missing entry.
