@@ -147,6 +147,11 @@ def judge(name: str, root: Path,
     cook_dir = root / name if not Path(name).is_absolute() else Path(name)
     cfg = yaml.safe_load((cook_dir / "brief.yaml").read_text())
 
+    from . import brief_schema
+    rc = brief_schema.validate_or_die(cfg, source=str(cook_dir / "brief.yaml"))
+    if rc is not None:
+        return rc
+
     participants = cfg.get("participants", [])
     judges_cfg = cfg.get("judges", [{"name": "claude", "flavor": "claude"}])
     if judges_override:

@@ -72,7 +72,12 @@ def new_cook(name: str, root: Path, participants: list[str]) -> int:
         return 2
 
     root.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(TEMPLATE_DIR, target)
+    # Skip pseudo-flavors that are template scaffolding, not real participants
+    # (e.g. _custom/, kept in templates as docs/example for new flavors).
+    shutil.copytree(
+        TEMPLATE_DIR, target,
+        ignore=shutil.ignore_patterns("_*"),
+    )
 
     brief_yaml = target / "brief.yaml"
     cfg = yaml.safe_load(brief_yaml.read_text())

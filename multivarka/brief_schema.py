@@ -1,0 +1,215 @@
+"""Hand-rolled validator for `brief.yaml`.
+
+Why hand-rolled rather than `jsonschema`: this catches >95% of real
+mistakes (missing/typo'd field, wrong type, weights that don't add up to
+100, duplicate participant names, unknown flavor, judge same flavor as
+all participants) and keeps the dependency tree at one runtime dep
+(`pyyaml`). Adding `jsonschema` would buy us ~5% more rigor at the cost
+of one more wheel in every install.
+
+Each rule emits a short error string; callers print them and exit
+non-zero before any docker work happens — so we never spend compose
+build time on a brief that's structurally broken.
+
+Used by:
+  - `multivarka doctor` (preflight)
+  - `cook.py`, `refine.py`, `judge.py` (start-of-run guard, redundant with
+    doctor but cheap and protects users who skip doctor).
+
+Convention: `validate(cfg)` returns a list of error strings. Empty list
+means valid. Caller decides what to do (print + exit, raise, etc).
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+
+# Flavors known to creds.py. Adding a flavor = adding here AND in creds.py
+# AND providing a Dockerfile under templates/cook/participants/<flavor>/.
+KNOWN_FLAVORS = frozenset({"claude", "codex", "gemini", "dummy"})
+
+
+def _is_int_like(x: Any) -> bool:
+    return isinstance(x, int) and not isinstance(x, bool)
+
+
+def _validate_actor(actor: Any, kind: str, idx: int,
+                    seen_names: set[str], errors: list[str]) -> None:
+    """kind is 'participant' or 'judge'."""
+    where = f"{kind}s[{idx}]"
+    if not isinstance(actor, dict):
+        errors.append(f"{where}: must be a mapping (got {type(actor).__name__})")
+        return
+    name = actor.get("name")
+    if not isinstance(name, str) or not name:
+        errors.append(f"{where}: 'name' is required and must be a non-empty string")
+        return
+    if not name.replace("-", "").replace("_", "").isalnum():
+        errors.append(
+            f"{where}.name='{name}': must be alphanumeric (with - or _); "
+            f"used as docker service / network name"
+        )
+    if name in seen_names:
+        errors.append(
+            f"{where}.name='{name}': duplicate name in {kind}s "
+            f"(names must be unique to address compose services)"
+        )
+    seen_names.add(name)
+    flavor = actor.get("flavor", name)
+    if not isinstance(flavor, str) or not flavor:
+        errors.append(f"{where}.flavor: must be a non-empty string")
+        return
+    if flavor not in KNOWN_FLAVORS:
+        errors.append(
+            f"{where}.flavor='{flavor}': unknown flavor. Known: "
+            f"{sorted(KNOWN_FLAVORS)}. To add a new flavor see docs/add-flavor.md."
+        )
+    if "timeout_s" in actor:
+        t = actor["timeout_s"]
+        if not _is_int_like(t) or t <= 0:
+            errors.append(f"{where}.timeout_s: must be a positive integer (got {t!r})")
+    if "model" in actor and not isinstance(actor["model"], str):
+        errors.append(f"{where}.model: must be a string if set (got {type(actor['model']).__name__})")
+
+
+def _validate_rubric(rubric: Any, errors: list[str]) -> None:
+    if rubric is None:
+        return  # rubric is optional — judges fall back to JUDGE_BRIEF.md text
+    if not isinstance(rubric, dict):
+        errors.append(f"rubric: must be a mapping (got {type(rubric).__name__})")
+        return
+    scale = rubric.get("scale")
+    if scale is not None:
+        if (not isinstance(scale, list) or len(scale) != 2
+                or not all(_is_int_like(x) for x in scale)
+                or scale[0] >= scale[1]):
+            errors.append(f"rubric.scale: must be [lo, hi] with lo<hi (got {scale!r})")
+    dims = rubric.get("dimensions")
+    if dims is None:
+        errors.append("rubric.dimensions: required when rubric is set")
+        return
+    if not isinstance(dims, list) or not dims:
+        errors.append("rubric.dimensions: must be a non-empty list")
+        return
+    seen_ids: set[str] = set()
+    total_weight = 0
+    for i, d in enumerate(dims):
+        if not isinstance(d, dict):
+            errors.append(f"rubric.dimensions[{i}]: must be a mapping")
+            continue
+        did = d.get("id")
+        if not isinstance(did, str) or not did:
+            errors.append(f"rubric.dimensions[{i}].id: required non-empty string")
+        elif did in seen_ids:
+            errors.append(f"rubric.dimensions[{i}].id='{did}': duplicate dimension id")
+        else:
+            seen_ids.add(did)
+        w = d.get("weight")
+        if not _is_int_like(w) or w <= 0:
+            errors.append(f"rubric.dimensions[{i}].weight: positive integer required "
+                          f"(got {w!r})")
+        else:
+            total_weight += w
+    if total_weight and total_weight != 100:
+        errors.append(
+            f"rubric.dimensions: weights sum to {total_weight}, expected 100. "
+            f"(So `report` produces a clean 0-100 score; rebalance.)"
+        )
+
+
+def validate(cfg: Any) -> list[str]:
+    """Return a list of human-readable validation errors. Empty = valid."""
+    errors: list[str] = []
+    if not isinstance(cfg, dict):
+        return [f"brief.yaml root: must be a mapping (got {type(cfg).__name__})"]
+
+    name = cfg.get("name")
+    if not isinstance(name, str) or not name:
+        errors.append("name: required non-empty string (used as compose project name)")
+    elif not name.replace("-", "").replace("_", "").isalnum():
+        errors.append(f"name='{name}': must be alphanumeric (with - or _)")
+    elif name == "PLACEHOLDER":
+        errors.append("name='PLACEHOLDER': brief.yaml not initialized — "
+                      "did `multivarka new` finish? expected a real cook name.")
+
+    for key in ("timeout_s", "judge_timeout_s"):
+        if key in cfg:
+            v = cfg[key]
+            if not _is_int_like(v) or v <= 0:
+                errors.append(f"{key}: must be a positive integer (got {v!r})")
+
+    participants = cfg.get("participants", [])
+    if not isinstance(participants, list) or not participants:
+        errors.append("participants: must be a non-empty list")
+    else:
+        seen: set[str] = set()
+        for i, p in enumerate(participants):
+            _validate_actor(p, "participant", i, seen, errors)
+
+    judges = cfg.get("judges", [])
+    if not isinstance(judges, list):
+        errors.append("judges: must be a list (can be empty)")
+    else:
+        seen_j: set[str] = set()
+        for i, j in enumerate(judges):
+            _validate_actor(j, "judge", i, seen_j, errors)
+
+    _validate_rubric(cfg.get("rubric"), errors)
+
+    # Soft warning rolled into errors — only when participants exist and judges
+    # do too: if every judge shares a flavor with every participant, anonymization
+    # is the only line of defense. Just warn (not block).
+    if (isinstance(participants, list) and participants
+            and isinstance(judges, list) and judges):
+        p_flavors = {p.get("flavor", p.get("name")) for p in participants
+                     if isinstance(p, dict)}
+        j_flavors = {j.get("flavor", j.get("name")) for j in judges
+                     if isinstance(j, dict)}
+        if j_flavors and j_flavors.issubset(p_flavors):
+            # Don't add to errors[] — this is advisory, not blocking.
+            # Caller can re-emit if they care. For now we surface via
+            # validate_warnings() below.
+            pass
+
+    return errors
+
+
+def validate_warnings(cfg: Any) -> list[str]:
+    """Non-blocking issues worth surfacing. Caller prints, doesn't exit."""
+    warnings: list[str] = []
+    if not isinstance(cfg, dict):
+        return warnings
+    participants = cfg.get("participants") or []
+    judges = cfg.get("judges") or []
+    if (isinstance(participants, list) and isinstance(judges, list)
+            and judges and participants):
+        p_flavors = {p.get("flavor", p.get("name")) for p in participants
+                     if isinstance(p, dict)}
+        j_flavors = {j.get("flavor", j.get("name")) for j in judges
+                     if isinstance(j, dict)}
+        if j_flavors and j_flavors.issubset(p_flavors):
+            warnings.append(
+                f"every judge flavor ({sorted(j_flavors)}) also appears as a "
+                f"participant. Anonymization mitigates self-bias, but for full "
+                f"anti-self-judging add at least one judge of a different flavor."
+            )
+    return warnings
+
+
+def validate_or_die(cfg: Any, source: str = "brief.yaml") -> int | None:
+    """Print errors and return exit code 2 if invalid; print warnings; else None.
+
+    Standard "guard" entry point for cook/refine/judge.
+    """
+    import sys
+    errors = validate(cfg)
+    if errors:
+        print(f"\n{source} is invalid:", file=sys.stderr)
+        for e in errors:
+            print(f"  - {e}", file=sys.stderr)
+        print("", file=sys.stderr)
+        return 2
+    for w in validate_warnings(cfg):
+        print(f"warn ({source}): {w}")
+    return None

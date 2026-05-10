@@ -191,12 +191,18 @@ def _run_one(cook_dir: Path, project: str, participant: dict,
 
 
 def refine(name: str, root: Path,
-           participants_override: list[str] | None = None) -> int:
+           participants_override: list[str] | None = None,
+           feedback_path: Path | None = None) -> int:
     cook_dir = root / name if not Path(name).is_absolute() else Path(name)
     if not cook_dir.exists():
         print(f"error: cook folder {cook_dir} does not exist", flush=True)
         return 2
     cfg = yaml.safe_load((cook_dir / "brief.yaml").read_text())
+
+    from . import brief_schema
+    rc = brief_schema.validate_or_die(cfg, source=str(cook_dir / "brief.yaml"))
+    if rc is not None:
+        return rc
 
     participants = cfg.get("participants", [])
     if participants_override:
@@ -212,13 +218,21 @@ def refine(name: str, root: Path,
     round_num = _next_round_num(cook_dir)
     prev_round = round_num - 1
 
-    fb_path = cook_dir / "FEEDBACK.md"
-    if not fb_path.exists():
-        print(f"warn: {fb_path} missing — running with empty shared feedback",
-              flush=True)
-        shared_fb = ""
-    else:
+    if feedback_path is not None:
+        fb_path = feedback_path if feedback_path.is_absolute() else Path.cwd() / feedback_path
+        if not fb_path.exists():
+            print(f"error: --feedback path {fb_path} not found", flush=True)
+            return 2
+        print(f"[refine] using shared feedback from {fb_path}", flush=True)
         shared_fb = fb_path.read_text()
+    else:
+        fb_path = cook_dir / "FEEDBACK.md"
+        if not fb_path.exists():
+            print(f"warn: {fb_path} missing — running with empty shared feedback",
+                  flush=True)
+            shared_fb = ""
+        else:
+            shared_fb = fb_path.read_text()
 
     brief_text = (cook_dir / "BRIEF.md").read_text()
 

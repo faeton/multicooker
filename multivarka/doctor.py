@@ -24,7 +24,7 @@ from pathlib import Path
 
 import yaml
 
-from . import base_images, creds
+from . import base_images, brief_schema, creds
 
 
 TEMPLATES_PARTICIPANTS = (
@@ -116,6 +116,14 @@ def doctor(name: str | None, root: Path,
                   file=sys.stderr)
             return 2
         cfg = yaml.safe_load(brief_yaml.read_text())
+        schema_errors = brief_schema.validate(cfg)
+        if schema_errors:
+            print(f"doctor: {brief_yaml} is invalid:")
+            for e in schema_errors:
+                print(f"  - {e}")
+            return 1
+        for w in brief_schema.validate_warnings(cfg):
+            print(f"doctor: warn: {w}")
         flavors = sorted({p.get("flavor", p["name"])
                           for p in cfg.get("participants", [])}
                          | {j.get("flavor", j["name"])

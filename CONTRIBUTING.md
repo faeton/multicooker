@@ -37,20 +37,24 @@ without any LLM credentials.
 
 ## Adding a new participant flavor
 
-See `docs/orchestration.md` and the existing
-`multivarka/templates/cook/participants/` Dockerfiles. The minimum:
+Step-by-step guide: [`docs/add-flavor.md`](docs/add-flavor.md).
+Boilerplate to copy from:
+[`templates/cook/participants/_custom/`](multivarka/templates/cook/participants/_custom/)
+(Dockerfile.example + entrypoint.sh.example).
+
+TL;DR — minimum touch list:
 
 1. `templates/cook/participants/<flavor>/Dockerfile` — slim layer on
    top of `mv-base-<flavor>` (or self-contained, like `dummy`).
 2. `templates/cook/participants/<flavor>/entrypoint.sh` — reads
-   `/work/PROMPT.txt`, writes into `/work/out/`.
+   `/work/PROMPT.txt`, writes into `/work/out/`. Branches on
+   `MULTIVARKA_JUDGE` for judge mode.
 3. (optional) `templates/base/<flavor>/Dockerfile` — heavy bits
    (`npm i -g <cli>`, apt deps) so cook builds stay fast.
-4. Auth snapshot logic in `multivarka/creds.py` if the CLI has
-   non-trivial credentials on the host.
-5. Argv shape in `entrypoint.sh` — match what the CLI expects in
-   non-interactive mode (consult `docs/orchestration.md` for the
-   canonical arg orders).
+4. Auth snapshot in `multivarka/creds.py` if the CLI has
+   non-trivial credentials on the host (or no-op for headless).
+5. Add the flavor to `KNOWN_FLAVORS` in
+   `multivarka/brief_schema.py`.
 
 ## Style
 

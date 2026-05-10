@@ -89,6 +89,10 @@ def main(argv: list[str] | None = None) -> int:
     prf.add_argument("--root", default="cooks")
     prf.add_argument("--participants", default=None,
                      help="Override which participants to refine (comma-separated)")
+    prf.add_argument("--feedback", default=None, metavar="PATH",
+                     help="Use this file as shared feedback instead of "
+                          "cooks/<task>/FEEDBACK.md (handy for reusing feedback "
+                          "across cooks).")
 
     # diff
     pdf = sub.add_parser("diff",
@@ -163,6 +167,7 @@ def main(argv: list[str] | None = None) -> int:
         return refine(
             name=args.name, root=Path(args.root),
             participants_override=_csv(args.participants),
+            feedback_path=Path(args.feedback) if args.feedback else None,
         )
     if args.cmd == "diff":
         return diff_rounds(

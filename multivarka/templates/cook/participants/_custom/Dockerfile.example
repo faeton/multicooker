@@ -1,0 +1,41 @@
+# Example Dockerfile for adding a NEW flavor (CLI agent) to multivarka.
+# Copy this file to templates/cook/participants/<your-flavor>/Dockerfile,
+# rename, and fill in the TODOs below.
+#
+# Two layouts are supported:
+#
+# A. Self-contained (good for niche/lightweight CLIs):
+#    FROM <some-base>
+#    RUN install_your_cli_here
+#    Cook image rebuilds the world every time. Fine for ~50MB images;
+#    painful for anything larger.
+#
+# B. Shared base (good for npm-installed tooling — claude/codex/gemini
+#    all use this):
+#    1. Create templates/base/<your-flavor>/Dockerfile that does the heavy
+#       install (apt, npm i -g, pip install).
+#    2. Build it once with `multivarka build-base <your-flavor>`.
+#    3. The cook Dockerfile is then trivial: just FROM and entrypoint.
+#    Re-builds are ~1 second instead of minutes.
+#
+# This file shows layout B. See templates/cook/participants/dummy/
+# for an example of layout A.
+
+# TODO: replace with your flavor's base image tag (built by build-base).
+FROM mv-base-yourflavor:latest
+
+# Permission-bypass argv goes in entrypoint.sh, not in CMD. CMD/ENTRYPOINT
+# differs per CLI: claude wants --print + --add-dir, codex uses
+# `codex exec`, gemini uses --yolo. See entrypoint.sh.example.
+COPY entrypoint.sh /usr/local/bin/mv-entrypoint
+RUN chmod +x /usr/local/bin/mv-entrypoint
+
+# Run as the non-root user provided by your base image. Container = sandbox,
+# but defense-in-depth still asks for non-root.
+# TODO: match the user your base image creates (claude/codex/gemini bases
+# create `node` from node:22-slim; alpine bases typically `mv` or `agent`).
+USER node
+WORKDIR /work
+ENV HOME=/home/node
+
+ENTRYPOINT ["/usr/local/bin/mv-entrypoint"]

@@ -70,9 +70,11 @@
   entrypoint.sh добавляет соответствующий argv (`--model` для
   claude и gemini, `-c model=...` для codex). Дефолт без model =
   CLI выбирает сам как раньше.
-- [ ] Поддержать **новые CLI** без правки шаблонов: добавить
-  `templates/cook/participants/_custom/Dockerfile.example` и
-  документ "как добавить свой flavor за 10 минут".
+- [x] Поддержать **новые CLI** без правки шаблонов:
+  `templates/cook/participants/_custom/{Dockerfile,entrypoint.sh}.example`
+  + `docs/add-flavor.md` (10-минутный пошаговый гайд). `new_cook`
+  игнорирует `_*` каталоги при scaffolding'е, чтобы пример не
+  лип к каждому новому cook'у.
 - [x] Per-participant / per-judge timeout: brief.yaml поддерживает
   optional `timeout_s:` на уровне participant'а или судьи; глобальный
   `timeout_s` / `judge_timeout_s` остаётся дефолтом. Динамический
@@ -85,11 +87,12 @@
   снапшотится (`rounds/N/<p>/` + `rounds/N/_inbox/`), как
   inline-вставляются FEEDBACK.md / FEEDBACK_<flavor>.md в
   PROMPT.txt, round-counter, что НЕ переносится между раундами.
-- [ ] `multivarka refine --feedback <path>` — позволить указать
-  один FEEDBACK файл вне cook_dir (для повторного использования
-  feedback'а между cook'ами).
-- [ ] Возможность refine только подмножества участников
-  (`--participants`) уже есть; покрыть тестом.
+- [x] `multivarka refine --feedback <path>` — указать FEEDBACK файл
+  вне cook_dir (для повторного использования feedback'а между
+  cook'ами). Покрыто интеграционным тестом.
+- [x] Возможность refine только подмножества участников
+  (`--participants`) — покрыто интеграционным тестом
+  `test_refine_participants_subset`.
 - [x] `multivarka diff <task> N M [--participants ...]` — unified
   diff между раундами по каждому участнику. Хэндлит added/
   deleted/modified/binary, "no changes" notice. Покрыт тестами
@@ -101,8 +104,10 @@
   run trace, чтобы можно было пересуживать без повторного cook.
 - [ ] Registry-подход (OpenAI Evals): versioned eval/task specs,
   шарящиеся как шаблоны.
-- [ ] Deterministic validators (AgentV / Iris) — валидировать
-  brief.yaml через JSON Schema до LLM-судей.
+- [x] Deterministic validators (AgentV / Iris) — валидировать
+  brief.yaml до запуска. Реализовано как hand-rolled валидатор
+  в `multivarka/brief_schema.py` (no extra deps), подключён в
+  doctor + cook/refine/judge. Покрыто 13 тестами.
 - [ ] Sandbox-providers как у OpenHands: Docker по умолчанию,
   remote/Kubernetes как опция.
 

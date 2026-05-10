@@ -170,6 +170,11 @@ def cook(name: str, root: Path,
         return 2
     cfg = yaml.safe_load(brief_yaml.read_text())
 
+    from . import brief_schema
+    rc = brief_schema.validate_or_die(cfg, source=str(brief_yaml))
+    if rc is not None:
+        return rc
+
     participants = cfg.get("participants", [])
     if participants_override:
         wanted = set(participants_override)

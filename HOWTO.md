@@ -372,6 +372,12 @@ participants:
   - **personal feedback** из `cooks/<task>/FEEDBACK_<flavor>.md`
     (опционально, адресовано конкретному участнику).
 - `--participants <list>` позволяет refine'ить подмножество.
+- `--feedback <path>` подменяет источник shared feedback'а на
+  произвольный файл — удобно, когда один фидбек применяется к
+  нескольким cook'ам.
+- `multivarka diff <task> N M` показывает unified diff между
+  раундами по каждому участнику — sanity-check, что refine реально
+  что-то поменял.
 
 Артефакты раунда: `REFINE_<N>.json` (метаданные старта),
 `REFINE_<N>_RESULT.json` (status + duration + rate-limit info per

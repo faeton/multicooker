@@ -189,6 +189,13 @@ Refine читает два файла **из корня cook'а** (не из `wo
 warning'ом и пустым shared-блоком. `FEEDBACK_<flavor>.md` тоже
 опциональный — отсутствует ⇒ personal-блок не добавляется.
 
+`multivarka refine --feedback <path>` подменяет источник shared
+feedback'а на произвольный файл (вне cook_dir). Полезно, когда
+один и тот же фидбек применяется к нескольким cook'ам, или
+feedback живёт в общем «issue tracker» репо отдельно от арен.
+Personal-feedback всегда читается из `cook_dir/FEEDBACK_<flavor>.md`
+(per-cook).
+
 Один FEEDBACK живёт **столько раундов, сколько ты его не
 перезаписал**. Между раундами `refine` не очищает FEEDBACK
 файлы. Хочешь свежий фидбек на round N+2 — перепиши `FEEDBACK.md`
