@@ -102,13 +102,15 @@ def _run_participant(cook_dir: Path, project: str, participant: dict,
     name = participant["name"]
     flavor = participant.get("flavor", name)
     service = f"participant-{name}"
+    eff_timeout = int(participant.get("timeout_s", timeout_s))
     _setup_worktree(cook_dir, name, prompt_text)
     log_dir = cook_dir / "logs" / name
-    print(f"[cook] {name} ({flavor}): launching service {service}", flush=True)
+    print(f"[cook] {name} ({flavor}): launching service {service} "
+          f"(timeout {eff_timeout}s)", flush=True)
     try:
         res: RunResult = compose_runner.run_cell(
             cook_dir=cook_dir, project=project, service=service,
-            flavor=flavor, log_dir=log_dir, timeout_s=timeout_s,
+            flavor=flavor, log_dir=log_dir, timeout_s=eff_timeout,
         )
     except Exception as e:                                                  # noqa: BLE001
         with lock:

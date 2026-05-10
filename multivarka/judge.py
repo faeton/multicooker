@@ -197,7 +197,9 @@ def judge(name: str, root: Path,
                   f"participants {same_flavor_participants}. Anonymization is on, "
                   f"but for full anti-bias add a different-flavor judge.",
                   flush=True)
-        print(f"[judge] running {jname} ({flavor})...", flush=True)
+        eff_timeout = int(j.get("timeout_s", timeout_s))
+        print(f"[judge] running {jname} ({flavor}, timeout {eff_timeout}s)...",
+              flush=True)
         work = _setup_judge_workdir(cook_dir, jname, judge_in, deterministic=True)
         log_dir = cook_dir / "judging" / "_logs" / jname
         (work / "PROMPT.txt").write_text(JUDGE_PROMPT_TEMPLATE)
@@ -206,7 +208,7 @@ def judge(name: str, root: Path,
             compose_runner.build_images(cook_dir, project, [service])
             res = compose_runner.run_cell(
                 cook_dir=cook_dir, project=project, service=service,
-                flavor=flavor, log_dir=log_dir, timeout_s=timeout_s,
+                flavor=flavor, log_dir=log_dir, timeout_s=eff_timeout,
             )
         except Exception as e:                                              # noqa: BLE001
             print(f"[judge] {jname}: failed to launch: {e}", flush=True)

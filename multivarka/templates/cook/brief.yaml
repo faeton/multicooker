@@ -1,7 +1,10 @@
 name: PLACEHOLDER          # filled in by `multivarka new`
-timeout_s: 1800            # 30 min per participant
-judge_timeout_s: 900       # 15 min per judge
+timeout_s: 1800            # 30 min per participant (default; override per-participant below)
+judge_timeout_s: 900       # 15 min per judge (default; override per-judge below)
 
+# Per-participant `timeout_s` overrides the global default above. Useful when
+# one CLI is structurally slower (long tool loops) and you don't want it to
+# drag the global ceiling up for everyone. Same for per-judge.
 participants:
   - name: claude
     flavor: claude
@@ -9,6 +12,7 @@ participants:
     flavor: codex
   - name: gemini
     flavor: gemini
+    # timeout_s: 2400   # example: give gemini extra headroom
 
 judges:
   # By default we use claude + gemini. Codex would also work, but if any

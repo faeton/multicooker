@@ -15,6 +15,7 @@ from .report import report
 from .clean import clean
 from .refine import refine
 from .doctor import doctor
+from .diff_rounds import diff_rounds
 from . import base_images
 
 
@@ -89,6 +90,17 @@ def main(argv: list[str] | None = None) -> int:
     prf.add_argument("--participants", default=None,
                      help="Override which participants to refine (comma-separated)")
 
+    # diff
+    pdf = sub.add_parser("diff",
+                         help="Show file-level diff between two refine rounds "
+                              "(sanity check that refine moved the needle)")
+    pdf.add_argument("name", help="Cook folder name")
+    pdf.add_argument("n", type=int, help="Round N (older)")
+    pdf.add_argument("m", type=int, help="Round M (newer; use the live round if it isn't snapshotted yet)")
+    pdf.add_argument("--root", default="cooks")
+    pdf.add_argument("--participants", default=None,
+                     help="Comma-separated participants to diff (default: all)")
+
     # report
     pr = sub.add_parser("report", help="Build leaderboard.md from judge scores")
     pr.add_argument("name")
@@ -150,6 +162,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "refine":
         return refine(
             name=args.name, root=Path(args.root),
+            participants_override=_csv(args.participants),
+        )
+    if args.cmd == "diff":
+        return diff_rounds(
+            name=args.name, root=Path(args.root),
+            n=args.n, m=args.m,
             participants_override=_csv(args.participants),
         )
     if args.cmd == "report":

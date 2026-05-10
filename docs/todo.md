@@ -55,10 +55,10 @@
 - [ ] Документировать риск: подписочные OAuth-файлы монтируются в
   контейнер и доступны агенту внутри sandbox. Compromised CLI
   может их прочитать. Это плата за headless подписочную auth.
-- [ ] Watcher для `claudeAiOauth` ключа: если Anthropic поменяет
-  shape JSON, мы упадём с понятным сообщением (уже есть, но
-  стоит протестировать на mock-ключе и зафиксировать regression
-  test).
+- [x] Watcher для `claudeAiOauth` ключа: regression test на mock
+  блобе (`tests/test_creds_claude_shape.py`) — 4 кейса:
+  good shape, unexpected shape, invalid JSON, missing entry.
+  Shape с v0.1 ни разу не менялся, тест preventive.
 
 ## Расширяемость участников
 
@@ -73,21 +73,27 @@
 - [ ] Поддержать **новые CLI** без правки шаблонов: добавить
   `templates/cook/participants/_custom/Dockerfile.example` и
   документ "как добавить свой flavor за 10 минут".
-- [ ] Per-participant timeout (сейчас глобальный `timeout_s`).
+- [x] Per-participant / per-judge timeout: brief.yaml поддерживает
+  optional `timeout_s:` на уровне participant'а или судьи; глобальный
+  `timeout_s` / `judge_timeout_s` остаётся дефолтом. Динамический
+  дефолт по сложности брифа отвергнут — нет надёжного сигнала.
 
 ## Refine
 
-- [ ] Описать refine-контракт в `docs/orchestration.md`: что
-  переживает round (`out/`), что снапшотится (`rounds/N/`), как
-  устроен FEEDBACK.md и FEEDBACK_<flavor>.md.
+- [x] Refine-контракт описан в `docs/orchestration.md` §"Refine":
+  что переживает round (`out/` остаётся в `work/`), что
+  снапшотится (`rounds/N/<p>/` + `rounds/N/_inbox/`), как
+  inline-вставляются FEEDBACK.md / FEEDBACK_<flavor>.md в
+  PROMPT.txt, round-counter, что НЕ переносится между раундами.
 - [ ] `multivarka refine --feedback <path>` — позволить указать
   один FEEDBACK файл вне cook_dir (для повторного использования
   feedback'а между cook'ами).
 - [ ] Возможность refine только подмножества участников
   (`--participants`) уже есть; покрыть тестом.
-- [ ] `multivarka diff <task> N M` — показать diff между раундами
-  N и M по конкретному участнику (sanity-check, что refine
-  реально что-то поменял).
+- [x] `multivarka diff <task> N M [--participants ...]` — unified
+  diff между раундами по каждому участнику. Хэндлит added/
+  deleted/modified/binary, "no changes" notice. Покрыт тестами
+  (`tests/test_diff_rounds.py`).
 
 ## Идеи из аналогов
 
