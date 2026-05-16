@@ -19,7 +19,7 @@ from pathlib import Path
 
 import yaml
 
-from multivarka.report import report
+from multicooker.report import report
 
 
 def _make_cook(tmp_path: Path, participants: list[str]) -> Path:

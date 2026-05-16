@@ -30,7 +30,7 @@ jobs:
       - name: Lint (ruff)
         # Soft for now: only catch syntax errors and obvious bugs.
         # Tighten later by adding rules to pyproject.toml.
-        run: ruff check multivarka/ tests/ --select=E9,F
+        run: ruff check multicooker/ tests/ --select=E9,F
 
       - name: Unit tests
         # Integration test (test_integration_dummy.py) auto-skips when docker
@@ -45,9 +45,9 @@ jobs:
         run: |
           tmpvenv=$(mktemp -d)/venv
           python -m venv "$tmpvenv"
-          "$tmpvenv/bin/pip" install -q dist/multivarka-*.whl
-          "$tmpvenv/bin/multivarka" --version
-          "$tmpvenv/bin/multivarka" new install-smoke \
+          "$tmpvenv/bin/pip" install -q dist/multicooker-*.whl
+          "$tmpvenv/bin/multicooker" --version
+          "$tmpvenv/bin/multicooker" new install-smoke \
               --participants a=dummy --root "$tmpvenv/cooks"
           test -f "$tmpvenv/cooks/"*"-install-smoke/participants/dummy/Dockerfile"
 

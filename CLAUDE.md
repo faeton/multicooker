@@ -1,6 +1,6 @@
-# multivarka — для Клода
+# multicooker — для Клода
 
-Мультиварка — это арена для LLM: одна задача, несколько участников
+multicooker — это арена для LLM: одна задача, несколько участников
 (`claude` / `codex` / `gemini`) параллельно решают её **каждый в
 своём docker-контейнере** с подписочной авторизацией, потом судьи
 (тоже LLM в контейнерах) сравнивают и выставляют оценки.
@@ -21,11 +21,11 @@
    из хоста: bind-mount файлов для codex/gemini, named volume с
    one-time `claude /login` для claude. См. `docs/auth.md`.
 3. **Новая задача = новая папка `cooks/<имя>/`** через
-   `multivarka new <имя>` — копирует скелет из `templates/cook/`.
+   `multicooker new <имя>` — копирует скелет из `templates/cook/`.
    Имя автоматически префиксится сегодняшней датой:
-   `multivarka new foo` → `cooks/260509-foo/` (если уже передан
+   `multicooker new foo` → `cooks/260509-foo/` (если уже передан
    префикс `YYMMDD-`, он не дублируется). Дальше во всех командах
-   используется полное имя с датой: `multivarka cook 260509-foo`.
+   используется полное имя с датой: `multicooker cook 260509-foo`.
    Никогда не правь чужие cooks и не клади артефакты вне
    `cooks/<имя>/`.
 4. **Параллельность.** Все участники стартуют одновременно
@@ -68,20 +68,20 @@ docs/github для решения задачи. Sandbox обеспечивает
 ## Канонический поток
 
 ```bash
-multivarka new <task>                 # → cooks/<task>/ из templates/cook/
+multicooker new <task>                 # → cooks/<task>/ из templates/cook/
 $EDITOR cooks/<task>/BRIEF.md         # ЧТО участники должны сделать
 $EDITOR cooks/<task>/brief.yaml       # КТО, таймауты, рубрика
 $EDITOR cooks/<task>/JUDGE_BRIEF.md   # КАК судить (рубрика == brief.yaml)
 cp <refs>... cooks/<task>/raw/        # справочники (RO mount)
 
-multivarka cook   <task>              # параллельный запуск в контейнерах
-multivarka judge  <task>              # анонимизированное судейство в контейнерах
-multivarka report <task>              # → cooks/<task>/leaderboard.md
+multicooker cook   <task>              # параллельный запуск в контейнерах
+multicooker judge  <task>              # анонимизированное судейство в контейнерах
+multicooker report <task>              # → cooks/<task>/leaderboard.md
 ```
 
 ## Когда тебя просят «сделай новую арену под X»
 
-1. `multivarka new <task>`.
+1. `multicooker new <task>`.
 2. Перепиши `BRIEF.md`: цель, входы (придут в `/work/raw/` RO),
    что должно лежать в `/work/out/`, success criteria.
    Двусмысленность в постановке — ок (на ней расходятся участники),
@@ -92,7 +92,7 @@ multivarka report <task>              # → cooks/<task>/leaderboard.md
 5. Если задача требует кастомных тулов в контейнере (`tshark`,
    `pandas`, компилятор Go) — добавляй их в Dockerfile **этого
    cook**, не в шаблон. Cook'и независимы.
-6. `multivarka cook <task>` → `judge` → `report`.
+6. `multicooker cook <task>` → `judge` → `report`.
 
 Перед overnight — глянь `docs/pitfalls.md`.
 
@@ -130,5 +130,5 @@ multivarka report <task>              # → cooks/<task>/leaderboard.md
   API-ключей.
 - `docs/pitfalls.md` — грабли из reproxy/arena.
 - `docs/implementation-status.md` — что уже работает в коде, что
-  нужно дописать (если `multivarka cook --docker` сейчас падает с
+  нужно дописать (если `multicooker cook --docker` сейчас падает с
   "not implemented" — это сюда).

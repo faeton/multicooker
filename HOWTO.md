@@ -1,6 +1,6 @@
-# multivarka — HOWTO (the long version)
+# multicooker — HOWTO (the long version)
 
-Подробное описание того, как мультиварка работает, что она делает,
+Подробное описание того, как multicooker работает, что она делает,
 почему именно так, и какие правила нельзя нарушать. Если ты хочешь
 просто запустить — см. [README.md](README.md). Этот файл — для
 понимания внутренностей и для расширения.
@@ -10,8 +10,8 @@
 1. [Зачем это вообще](#зачем-это-вообще)
 2. [Mental model](#mental-model)
 3. [Структура папки `cook`](#структура-папки-cook)
-4. [Что происходит в `multivarka cook`](#что-происходит-в-multivarka-cook)
-5. [Что происходит в `multivarka judge`](#что-происходит-в-multivarka-judge)
+4. [Что происходит в `multicooker cook`](#что-происходит-в-multicooker-cook)
+5. [Что происходит в `multicooker judge`](#что-происходит-в-multicooker-judge)
 6. [Правила (которые легко нарушить)](#правила-которые-легко-нарушить)
 7. [Docker-mode (единственный)](#docker-mode-единственный)
 8. [Авторизация и стоимость](#авторизация-и-стоимость)
@@ -78,13 +78,13 @@
    `C`, ... — он не знает, какая модель что написала. Маппинг
    восстанавливается только в финальном отчёте.
 4. **Антисамосуд.** Если судья той же flavor, что и какой-то участник,
-   мультиварка печатает WARN (но судит). Анонимизация уже частично
+   multicooker печатает WARN (но судит). Анонимизация уже частично
    снимает bias; для жёсткой изоляции добавь судью третьей flavor
    (например ещё codex-judge), которой нет среди участников.
 
 ## Структура папки `cook`
 
-После `multivarka new my-task`:
+После `multicooker new my-task`:
 
 ```
 cooks/my-task/
@@ -99,7 +99,7 @@ cooks/my-task/
     └── gemini/
 ```
 
-После `multivarka cook my-task` добавляются:
+После `multicooker cook my-task` добавляются:
 
 ```
 cooks/my-task/
@@ -112,7 +112,7 @@ cooks/my-task/
 └── logs/<p>/<flavor>.stderr.log      # сырой stderr CLI
 ```
 
-После `multivarka judge my-task`:
+После `multicooker judge my-task`:
 
 ```
 cooks/my-task/judging/
@@ -126,13 +126,13 @@ cooks/my-task/judging/
 └── <judge-name>/review.md            # текстовое обоснование
 ```
 
-После `multivarka report my-task`:
+После `multicooker report my-task`:
 
 ```
 cooks/my-task/leaderboard.md
 ```
 
-## Что происходит в `multivarka cook`
+## Что происходит в `multicooker cook`
 
 Псевдокод:
 
@@ -157,7 +157,7 @@ write RUN_RESULT.json
 
 ### Rate-limit handling
 Каждый CLI имеет свои паттерны "ты упёрся в лимит" (см.
-`multivarka/runner_common.py:_RL_PATTERNS`). Если они находятся в хвосте
+`multicooker/runner_common.py:_RL_PATTERNS`). Если они находятся в хвосте
 stdout/stderr — участник помечается `rate_limited` со ссылкой на
 конкретную evidence-строку. **Не блокируем других** — у claude и
 gemini лимиты независимые, codex может умереть, claude и gemini
@@ -195,7 +195,7 @@ claude --add-dir /work --print "<prompt>"   # ←  prompt теряется
 Если участник проигнорировал и накидал файлы в корень — судья всё
 равно их увидит (он видит весь worktree, кроме симлинков).
 
-## Что происходит в `multivarka judge`
+## Что происходит в `multicooker judge`
 
 ```python
 participants = brief.participants
@@ -264,7 +264,7 @@ v0.1, в TODO).
 
 ## Docker-mode (единственный)
 
-Начиная с v0.2 multivarka работает только в docker-mode. Host-mode
+Начиная с v0.2 multicooker работает только в docker-mode. Host-mode
 и `host_runner.py` удалены — если что-то ломалось без них, чинится
 в docker-mode.
 
@@ -284,10 +284,10 @@ v0.1, в TODO).
   `--yolo`, `--dangerously-bypass-approvals-and-sandbox`) внутри
   контейнера обязательны: без них CLI зависают на
   approval-промптах. Безопасны, потому что контейнер их сдерживает.
-- Shared base images (`mv-base-<flavor>:latest`) ставят тяжёлое
+- Shared base images (`mc-base-<flavor>:latest`) ставят тяжёлое
   (`npm i -g <cli>`), а cook-Dockerfile укорочен до
-  `FROM mv-base-<flavor>` + entrypoint. Build cook-образа ~1 сек
-  вместо 2-3 мин. `multivarka build-base` собирает руками; cook /
+  `FROM mc-base-<flavor>` + entrypoint. Build cook-образа ~1 сек
+  вместо 2-3 мин. `multicooker build-base` собирает руками; cook /
   refine / judge сами зовут `base_images.ensure_built()`, поэтому
   для пользователя это прозрачно.
 
@@ -302,7 +302,7 @@ Threat model и что именно защищает контейнер: см.
   день; лимиты низкие — типичный cook на 3 участника гоняет
   ≈ 30k–200k токенов на каждого.
 - API-ключи не используются и **не подключаются как fallback**: если
-  подписочный creds недоступен, `multivarka doctor` / `cook` падают
+  подписочный creds недоступен, `multicooker doctor` / `cook` падают
   явно с remediation-сообщением, а не уходят молча на платный API.
 
 ### Бюджет на cook
@@ -358,7 +358,7 @@ participants:
 
 ## Refine: round N+1 поверх предыдущего результата
 
-Не каждая задача решается в один раунд. `multivarka refine <task>`
+Не каждая задача решается в один раунд. `multicooker refine <task>`
 прогоняет ещё один раунд поверх предыдущего output'а:
 
 - Каждый участник видит свой прошлый `./out/` **на месте, RW** —
@@ -375,7 +375,7 @@ participants:
 - `--feedback <path>` подменяет источник shared feedback'а на
   произвольный файл — удобно, когда один фидбек применяется к
   нескольким cook'ам.
-- `multivarka diff <task> N M` показывает unified diff между
+- `multicooker diff <task> N M` показывает unified diff между
   раундами по каждому участнику — sanity-check, что refine реально
   что-то поменял.
 
@@ -385,9 +385,9 @@ participant). Полный lifecycle артефактов — в
 [`docs/lifecycle.md`](docs/lifecycle.md).
 
 После refine ожидаем тот же шаг judging'а:
-`multivarka judge <task>` → `multivarka report <task>`.
+`multicooker judge <task>` → `multicooker report <task>`.
 
-### `multivarka rejudge <task>`
+### `multicooker rejudge <task>`
 
 Отдельная команда: пере-судить **тот же** snapshot без повторного
 cook'а. Полезно когда правил `JUDGE_BRIEF.md` (рубрика, веса) или
@@ -414,13 +414,13 @@ replay-сценариев. Полная structured-trace версия (tool call
 
 1. **Cost ledger** — на каждый запуск парсим usage из CLI и пишем
    `cook/cost_ledger.json`.
-2. **Resume** — `multivarka resume <name>` повторяет только
+2. **Resume** — `multicooker resume <name>` повторяет только
    `rate_limited` или `error` участников, не трогая `ok`.
 3. **Per-participant timeout** (сейчас глобальный `timeout_s`).
-4. **`multivarka diff <task> N M`** — сравнение раундов.
+4. **`multicooker diff <task> N M`** — сравнение раундов.
 5. **Replayable traces / registry** — структурированный run trace,
    versioned task specs (идеи из agentevals / OpenAI Evals).
-6. **Web report** — `multivarka serve <name>` показывает HTML с
+6. **Web report** — `multicooker serve <name>` показывает HTML с
    diff-ами между submissions, judging logs, leaderboard'ом.
 7. **Cross-cook leaderboard** — глобальная таблица "claude
    выигрывает в 7 из 10 задач, codex в 2, gemini в 1".
@@ -457,6 +457,6 @@ replay-сценариев. Полная structured-trace версия (tool call
   argv-бага и judge-симлинков порядок изменился. Только после
   смоук-теста и второго прогона цифры были осмысленными.
 - **Артефакты съедают диск быстро.** Reproxy-arena: 4.3 ГБ за два
-  overnight'а. В мультиварке артефакт = только `cook/<name>/`,
+  overnight'а. В multicooker артефакт = только `cook/<name>/`,
   без снапшотов раундов; лимит низкий, но привычка очищать
   старые cooks полезна.

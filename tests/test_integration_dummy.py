@@ -35,7 +35,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 def _run(args: list[str], cwd: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [sys.executable, "-m", "multivarka.cli", *args],
+        [sys.executable, "-m", "multicooker.cli", *args],
         cwd=cwd, capture_output=True, text=True, timeout=300,
     )
 

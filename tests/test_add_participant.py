@@ -10,7 +10,7 @@ from pathlib import Path
 
 import yaml
 
-from multivarka.add_participant import add_participant
+from multicooker.add_participant import add_participant
 
 
 def _make_cook(tmp_path: Path, participants: list[dict]) -> Path:

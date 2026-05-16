@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from multivarka.new_cook import parse_participant
+from multicooker.new_cook import parse_participant
 
 
 def test_bare_name_uses_same_flavor():

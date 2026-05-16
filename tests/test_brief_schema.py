@@ -7,7 +7,7 @@ will get tweaked over time.
 
 from __future__ import annotations
 
-from multivarka.brief_schema import KNOWN_FLAVORS, validate, validate_warnings
+from multicooker.brief_schema import KNOWN_FLAVORS, validate, validate_warnings
 
 
 def _good() -> dict:

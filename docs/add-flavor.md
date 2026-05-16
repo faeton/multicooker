@@ -1,6 +1,6 @@
 # Adding a new flavor (CLI agent)
 
-Multivarka ships with `claude`, `codex`, `gemini`, and `dummy`. To add a
+Multicooker ships with `claude`, `codex`, `gemini`, and `dummy`. To add a
 new CLI agent (например aider, cursor-cli, ollama-runner, локальный
 binary) — пройди этот гайд. ~10 минут на копипасту, основное время уйдёт
 на отладку argv твоего CLI.
@@ -21,7 +21,7 @@ binary) — пройди этот гайд. ~10 минут на копипаст
 ## Быстрая шпаргалка — какие файлы создать
 
 ```
-multivarka/templates/
+multicooker/templates/
 ├── base/<flavor>/Dockerfile               (layout B only — heavy install)
 └── cook/participants/<flavor>/
     ├── Dockerfile                          ← copy of _custom/Dockerfile.example
@@ -32,8 +32,8 @@ multivarka/templates/
 И две правки в коде:
 
 ```
-multivarka/creds.py               ← добавить _snapshot_<flavor>(...) + диспетчер
-multivarka/brief_schema.py        ← добавить flavor в KNOWN_FLAVORS
+multicooker/creds.py               ← добавить _snapshot_<flavor>(...) + диспетчер
+multicooker/brief_schema.py        ← добавить flavor в KNOWN_FLAVORS
 ```
 
 ## Шаг за шагом
@@ -52,7 +52,7 @@ echo $'*\n!entrypoint.sh' > templates/cook/participants/myflavor/.dockerignore
 `Dockerfile.example` — не комментарий-документация, а рабочий шаблон с
 TODO. Поправь:
 
-- `FROM mv-base-yourflavor:latest` → или твой публичный образ (layout A),
+- `FROM mc-base-yourflavor:latest` → или твой публичный образ (layout A),
   или имя твоей base (layout B; см. шаг 5).
 - `USER node` → юзер, который существует в base'е.
 
@@ -69,7 +69,7 @@ TODO. Поправь:
 
 Эталоны argv по существующим flavors — внутри
 `entrypoint.sh.example`. Главное — non-interactive флаг и форвард
-`MULTIVARKA_MODEL` (опционально, если CLI поддерживает выбор модели
+`MULTICOOKER_MODEL` (опционально, если CLI поддерживает выбор модели
 через брифа).
 
 ### 4. Подключить в `creds.py`
@@ -102,23 +102,23 @@ USER node
 WORKDIR /work
 ```
 
-Build один раз: `multivarka build-base myflavor`.
+Build один раз: `multicooker build-base myflavor`.
 
 ### 6. Обновить schema
 
-В `multivarka/brief_schema.py` добавь имя в `KNOWN_FLAVORS`. Иначе
+В `multicooker/brief_schema.py` добавь имя в `KNOWN_FLAVORS`. Иначе
 валидатор брифа отклонит брифы с твоим flavor'ом.
 
 ### 7. Smoke
 
 ```bash
-multivarka new add-flavor-test --participants a=myflavor
+multicooker new add-flavor-test --participants a=myflavor
 $EDITOR cooks/<date>-add-flavor-test/BRIEF.md  # любая мини-задача
-multivarka doctor add-flavor-test
-multivarka cook   add-flavor-test
-multivarka judge  add-flavor-test  # понадобится хотя бы один
+multicooker doctor add-flavor-test
+multicooker cook   add-flavor-test
+multicooker judge  add-flavor-test  # понадобится хотя бы один
                                     # judge другого flavor'а
-multivarka report add-flavor-test
+multicooker report add-flavor-test
 ```
 
 `doctor` отловит большинство глупых ошибок (missing Dockerfile,
@@ -146,4 +146,4 @@ exit code если `entrypoint.sh` не написал RESULT.md за `timeout_s
   participants/<flavor>/Dockerfile` (он переопределяет шаблон).
 - Не привязывай flavor к одной модели. Модель выбирается через
   `model:` в `brief.yaml` per participant — entrypoint обязан
-  уважать `$MULTIVARKA_MODEL`, если CLI это умеет.
+  уважать `$MULTICOOKER_MODEL`, если CLI это умеет.

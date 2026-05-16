@@ -1,7 +1,7 @@
 # Setup: новая cook
 
-Пошагово — как поднять новую задачу в мультиварке. Все команды
-выполняются из корня репо `~/Sites/multivarka/`.
+Пошагово — как поднять новую задачу в multicooker. Все команды
+выполняются из корня репо `~/Sites/multicooker/`.
 
 ## 0. Предусловия
 
@@ -13,7 +13,7 @@
 ## 1. Скаффолд папки
 
 ```bash
-multivarka new my-task
+multicooker new my-task
 ```
 
 Создаёт `cooks/my-task/` копированием `templates/cook/`:
@@ -75,7 +75,7 @@ rubric:
 ```
 
 Anti-self-judge: если судья той же `flavor`, что один из участников
-— мультиварка печатает WARN. Хочешь жёстко — добавь третью flavor
+— multicooker печатает WARN. Хочешь жёстко — добавь третью flavor
 в судьи и убери совпадающую.
 
 ## 4. JUDGE_BRIEF.md
@@ -98,9 +98,9 @@ read-only в `/work/raw/` каждому участнику. Никогда не
 ## 7. Запуск
 
 ```bash
-multivarka cook   my-task     # параллельно поднимет N контейнеров
-multivarka judge  my-task     # анонимизирует и запустит судей
-multivarka report my-task     # напишет cooks/my-task/leaderboard.md
+multicooker cook   my-task     # параллельно поднимет N контейнеров
+multicooker judge  my-task     # анонимизирует и запустит судей
+multicooker report my-task     # напишет cooks/my-task/leaderboard.md
 ```
 
 Между `cook` и `judge` можешь посмотреть `cooks/my-task/work/<p>/out/`

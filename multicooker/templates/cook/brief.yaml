@@ -1,0 +1,38 @@
+name: PLACEHOLDER          # filled in by `multicooker new`
+timeout_s: 1800            # 30 min per participant (default; override per-participant below)
+judge_timeout_s: 900       # 15 min per judge (default; override per-judge below)
+
+# Per-participant `timeout_s` overrides the global default above. Useful when
+# one CLI is structurally slower (long tool loops) and you don't want it to
+# drag the global ceiling up for everyone. Same for per-judge.
+participants:
+  - name: claude
+    flavor: claude
+  - name: codex
+    flavor: codex
+  - name: gemini
+    flavor: gemini
+    # timeout_s: 2400   # example: give gemini extra headroom
+
+judges:
+  # By default we use claude + gemini. Codex would also work, but if any
+  # of these flavors also appear as participants the judge will skip itself
+  # (anti-self-judging rule).
+  - name: claude-judge
+    flavor: claude
+  - name: gemini-judge
+    flavor: gemini
+
+# rubric_dimensions controls what JUDGE_BRIEF.md asks the judge to score.
+# Edit JUDGE_BRIEF.md if you add dimensions here.
+rubric:
+  scale: [0, 5]
+  dimensions:
+    - id: correctness
+      weight: 40
+    - id: quality
+      weight: 25
+    - id: honesty
+      weight: 20
+    - id: completeness
+      weight: 15

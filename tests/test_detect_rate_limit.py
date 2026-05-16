@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from multivarka.runner_common import detect_rate_limit
+from multicooker.runner_common import detect_rate_limit
 
 
 # ---- claude ---------------------------------------------------------------

@@ -3,7 +3,7 @@
 A reference for "what is this folder/file inside `cooks/<task>/`,
 who wrote it, and when can I delete it."
 
-## Created by `multivarka new <task>`
+## Created by `multicooker new <task>`
 
 ```
 cooks/<task>/
@@ -19,7 +19,7 @@ cooks/<task>/
 `new` is idempotent on the cook name (refuses to overwrite). The
 date prefix `YYMMDD-` is auto-applied unless you pass it yourself.
 
-## Created by `multivarka cook <task>`
+## Created by `multicooker cook <task>`
 
 ```
 cooks/<task>/
@@ -38,7 +38,7 @@ cooks/<task>/
 picked up. `judging/_inbox/` is the boundary between the cook step
 and the judge step — once written, the participants are done.
 
-## Created by `multivarka refine <task>`
+## Created by `multicooker refine <task>`
 
 ```
 cooks/<task>/
@@ -53,7 +53,7 @@ cooks/<task>/
 `work/<p>/out/` is **not** wiped — the agent edits it in place.
 Previous rounds live in `rounds/<N>/`.
 
-## Created by `multivarka judge <task>`
+## Created by `multicooker judge <task>`
 
 ```
 cooks/<task>/
@@ -67,7 +67,7 @@ cooks/<task>/
 Anonymization is one-shot — re-running `judge` shuffles the labels
 again and overwrites `_mapping.json`.
 
-## Created by `multivarka report <task>`
+## Created by `multicooker report <task>`
 
 ```
 cooks/<task>/leaderboard.md
@@ -78,10 +78,10 @@ the rubric weights from `brief.yaml`. Idempotent — safe to re-run.
 
 ## Cleanup
 
-- `multivarka clean <task>` — `docker compose down -v --rmi local` for
+- `multicooker clean <task>` — `docker compose down -v --rmi local` for
   the cook's compose project, plus removes `.auth/`. Add
   `--keep-creds` to skip the auth wipe; `--dry-run` to preview.
-- `multivarka clean --all` — same, for every `cooks/*/`.
+- `multicooker clean --all` — same, for every `cooks/*/`.
 - `rm -rf cooks/<task>/` — nuclear; safe because `cooks/` is in the
   repo `.gitignore`.
 
@@ -101,5 +101,5 @@ the rubric weights from `brief.yaml`. Idempotent — safe to re-run.
 ## What's checked in vs ignored
 
 - `cooks/` — globally gitignored.
-- `multivarka/templates/cook/` — checked in (the seed for new cooks).
+- `multicooker/templates/cook/` — checked in (the seed for new cooks).
 - `examples/hello-task/` — checked in (sanitized example, dummy flavor).

@@ -2,7 +2,7 @@
 
 ## Scope
 
-multivarka runs LLM agents (`claude`, `codex`, `gemini`) inside Docker
+multicooker runs LLM agents (`claude`, `codex`, `gemini`) inside Docker
 containers with `--dangerously-skip-permissions` / `--yolo` /
 `--dangerously-bypass-…` flags. These flags **are intentional** — the
 container is the sandbox. The threat model is documented in
@@ -15,7 +15,7 @@ public GitHub issue. Email **faeton@gmail.com** with:
 
 - a description of the issue;
 - a minimal reproducer if possible;
-- the multivarka commit / version you tested.
+- the multicooker commit / version you tested.
 
 I'll acknowledge within 7 days. Please give me 30 days to ship a fix
 before public disclosure unless the issue is being actively exploited.

@@ -1,6 +1,6 @@
 # Security model
 
-What multivarka protects against, what it doesn't, and why.
+What multicooker protects against, what it doesn't, and why.
 
 ## TL;DR
 
@@ -38,8 +38,8 @@ What multivarka protects against, what it doesn't, and why.
 
 | Non-goal | Why |
 |---|---|
-| Container escape via Docker / kernel CVEs | We trust Docker's isolation. If you need stronger isolation, run multivarka inside a VM. |
-| Stealing the participant's own creds | A compromised CLI binary has access to the auth files mounted for it. The cost of headless subscription auth. Mitigation: don't run multivarka with CLIs you don't trust. |
+| Container escape via Docker / kernel CVEs | We trust Docker's isolation. If you need stronger isolation, run multicooker inside a VM. |
+| Stealing the participant's own creds | A compromised CLI binary has access to the auth files mounted for it. The cost of headless subscription auth. Mitigation: don't run multicooker with CLIs you don't trust. |
 | Network-level data exfiltration | Egress is open. If your `raw/` is sensitive, see "Sensitive raw materials" below. |
 | Accidentally including `.env`, secrets in `raw/` | You control `raw/`. We mount it RO; we don't scan it. |
 | Re-using a leaked OAuth token | If your subscription creds leak, rotate them with the upstream provider (`claude /login`, `codex` re-auth, `gemini` re-auth). |
@@ -54,7 +54,7 @@ fetches." If that's not acceptable:
 
 - Don't put real secrets / PII / proprietary data into `raw/`.
 - Or, drop a per-cook `compose.override.yaml` that adds
-  `network_mode: none` or a strict allowlist proxy. multivarka
+  `network_mode: none` or a strict allowlist proxy. multicooker
   doesn't ship this by default because most cooks need internet.
 
 ## Credential handling
@@ -65,13 +65,13 @@ fetches." If that's not acceptable:
   - `codex`: `~/.codex/auth.json`.
   - `gemini`: `~/.gemini/oauth_creds.json` + `settings.json` etc.
 - Per-cook copy: `cooks/<task>/.auth/{claude,codex,gemini}/` —
-  mode `0600`, written by `multivarka.creds.snapshot()`, mounted
+  mode `0600`, written by `multicooker.creds.snapshot()`, mounted
   RO into the matching participant only.
 - Refresh: snapshot re-runs at every cook/refine/judge — token
   rotations on the host are picked up next run. There is no
   long-lived cache.
-- Clean-up: `multivarka clean <task>` removes `.auth/` (unless
-  `--keep-creds`). `multivarka clean --all` does it for every cook.
+- Clean-up: `multicooker clean <task>` removes `.auth/` (unless
+  `--keep-creds`). `multicooker clean --all` does it for every cook.
 
 ## OAuth files inside the sandbox
 
@@ -89,7 +89,7 @@ or prompt-injected CLI could:
 This is **by design and not mitigated**. Reasons:
 
 - Without the creds in the container, the CLI can't authenticate
-  in non-interactive mode — and the whole point of multivarka is
+  in non-interactive mode — and the whole point of multicooker is
   headless subscription use.
 - Per-cook bridge networks isolate participants from each other,
   but egress to the public internet is open (npm/pypi/docs/LLM
@@ -100,7 +100,7 @@ This is **by design and not mitigated**. Reasons:
 
 What you can do:
 
-- **Don't run multivarka against CLIs you don't trust.** Treat the
+- **Don't run multicooker against CLIs you don't trust.** Treat the
   three official CLIs as you'd treat any other tool you log into.
 - **Rotate aggressively if a leak is suspected:** `claude /login`,
   re-auth `codex` and `gemini` from the host. The next snapshot
@@ -111,7 +111,7 @@ What you can do:
 
 ## Anti-self-judging (anonymization)
 
-Anonymization happens in `multivarka/judge.py`:
+Anonymization happens in `multicooker/judge.py`:
 
 1. Each participant's sealed `out/` is copied (not symlinked) into
    `cooks/<task>/judging/_inbox/<participant>/`.

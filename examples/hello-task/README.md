@@ -12,14 +12,14 @@
 
 ```bash
 # Скопируй пример в свой cooks/ как обычный cook:
-multivarka new hello-smoke --participants a=dummy,b=dummy,c=dummy
+multicooker new hello-smoke --participants a=dummy,b=dummy,c=dummy
 cp examples/hello-task/BRIEF.md       cooks/$(date +%y%m%d)-hello-smoke/
 cp examples/hello-task/JUDGE_BRIEF.md cooks/$(date +%y%m%d)-hello-smoke/
 cp examples/hello-task/raw/about.md   cooks/$(date +%y%m%d)-hello-smoke/raw/
 
-multivarka cook   $(date +%y%m%d)-hello-smoke
-multivarka judge  $(date +%y%m%d)-hello-smoke
-multivarka report $(date +%y%m%d)-hello-smoke
+multicooker cook   $(date +%y%m%d)-hello-smoke
+multicooker judge  $(date +%y%m%d)-hello-smoke
+multicooker report $(date +%y%m%d)-hello-smoke
 ```
 
 `dummy` flavor:

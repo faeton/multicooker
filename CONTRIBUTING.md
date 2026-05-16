@@ -1,6 +1,6 @@
-# Contributing to multivarka
+# Contributing to multicooker
 
-Thanks for your interest. multivarka is a small, opinionated tool —
+Thanks for your interest. multicooker is a small, opinionated tool —
 contributions that match the existing direction are welcome.
 
 ## Direction (read before sending PRs)
@@ -22,12 +22,12 @@ If unsure whether your idea fits, open an issue first.
 ## Dev loop
 
 ```bash
-git clone https://github.com/<you>/multivarka
-cd multivarka
+git clone https://github.com/<you>/multicooker
+cd multicooker
 pip install -e . pytest ruff build
 
 pytest -q                          # 40 tests, ~8s with docker
-ruff check multivarka/ tests/ --select=E9,F
+ruff check multicooker/ tests/ --select=E9,F
 ```
 
 The integration test (`tests/test_integration_dummy.py`) auto-skips
@@ -39,22 +39,22 @@ without any LLM credentials.
 
 Step-by-step guide: [`docs/add-flavor.md`](docs/add-flavor.md).
 Boilerplate to copy from:
-[`templates/cook/participants/_custom/`](multivarka/templates/cook/participants/_custom/)
+[`templates/cook/participants/_custom/`](multicooker/templates/cook/participants/_custom/)
 (Dockerfile.example + entrypoint.sh.example).
 
 TL;DR — minimum touch list:
 
 1. `templates/cook/participants/<flavor>/Dockerfile` — slim layer on
-   top of `mv-base-<flavor>` (or self-contained, like `dummy`).
+   top of `mc-base-<flavor>` (or self-contained, like `dummy`).
 2. `templates/cook/participants/<flavor>/entrypoint.sh` — reads
    `/work/PROMPT.txt`, writes into `/work/out/`. Branches on
-   `MULTIVARKA_JUDGE` for judge mode.
+   `MULTICOOKER_JUDGE` for judge mode.
 3. (optional) `templates/base/<flavor>/Dockerfile` — heavy bits
    (`npm i -g <cli>`, apt deps) so cook builds stay fast.
-4. Auth snapshot in `multivarka/creds.py` if the CLI has
+4. Auth snapshot in `multicooker/creds.py` if the CLI has
    non-trivial credentials on the host (or no-op for headless).
 5. Add the flavor to `KNOWN_FLAVORS` in
-   `multivarka/brief_schema.py`.
+   `multicooker/brief_schema.py`.
 
 ## Style
 

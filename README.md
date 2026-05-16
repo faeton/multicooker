@@ -1,11 +1,11 @@
-# multivarka
+# multicooker
 
 Запускает несколько LLM-агентов (`claude`, `codex`, `gemini`)
 параллельно решать одну задачу — каждого в своём docker-контейнере,
 со своей подписочной авторизацией — а потом судьи (тоже LLM-агенты)
 сравнивают результаты и выставляют оценки.
 
-> «Мультиварка»: одна задача, несколько блюд готовятся параллельно в
+> «multicooker»: одна задача, несколько блюд готовятся параллельно в
 > своих чашах.
 
 ## Зачем
@@ -13,7 +13,7 @@
 Бывают задачи, которые недоопределены настолько, что одного
 «правильного» ответа не существует. Хочется посмотреть, как разные
 модели интерпретируют один и тот же brief, на чём расходятся, что
-каждая считает важным. Мультиварка даёт корпус из N расходящихся
+каждая считает важным. multicooker даёт корпус из N расходящихся
 решений + структурированное сравнение, **без счетов за API**: она
 ходит через твой `Claude Pro` / `ChatGPT Plus` / `Gemini Advanced`.
 
@@ -31,8 +31,8 @@ flavor `dummy`. См. [`examples/hello-task`](examples/hello-task/).
 ## Установка
 
 ```bash
-git clone https://github.com/faeton/multivarka
-cd multivarka
+git clone https://github.com/faeton/multicooker
+cd multicooker
 pip install -e .
 ```
 
@@ -40,10 +40,10 @@ pip install -e .
 
 ```bash
 # 1. Preflight — docker, compose, креды для каждого flavor
-multivarka doctor
+multicooker doctor
 
 # 2. Скаффолд (имя автоматически префиксится датой → 260509-my-task)
-multivarka new my-task
+multicooker new my-task
 
 # 3. Описать задачу
 cd cooks/260509-my-task
@@ -53,13 +53,13 @@ $EDITOR brief.yaml        # участники, судьи, таймаут, ру
 cp ~/some-reference.* raw/   # справочники (mount RO в контейнер)
 
 # 4. Cook — все участники параллельно, каждый в своём контейнере
-multivarka cook 260509-my-task
+multicooker cook 260509-my-task
 
 # 5. Judge — анонимно: судьи видят только метки A/B/C
-multivarka judge 260509-my-task
+multicooker judge 260509-my-task
 
 # 6. Сводка → leaderboard.md
-multivarka report 260509-my-task
+multicooker report 260509-my-task
 cat cooks/260509-my-task/leaderboard.md
 ```
 
@@ -69,9 +69,9 @@ cat cooks/260509-my-task/leaderboard.md
 $EDITOR cooks/260509-my-task/FEEDBACK.md          # общий фидбек
 $EDITOR cooks/260509-my-task/FEEDBACK_claude.md   # перс. (опционально)
 
-multivarka refine 260509-my-task    # round N+1 поверх предыдущего out/
-multivarka judge  260509-my-task
-multivarka report 260509-my-task
+multicooker refine 260509-my-task    # round N+1 поверх предыдущего out/
+multicooker judge  260509-my-task
+multicooker report 260509-my-task
 ```
 
 Прошлые раунды сохраняются в `rounds/<N>/`, ничего не теряется.
@@ -79,7 +79,7 @@ multivarka report 260509-my-task
 ## Несколько участников одного flavor / разные модели
 
 ```bash
-multivarka new comparison \
+multicooker new comparison \
   --participants claude-a=claude,claude-b=claude,codex,gemini
 ```
 
@@ -94,7 +94,7 @@ participants:
 
 ## Как это устроено (кратко)
 
-- Один docker compose project на cook (`mv-<task>`).
+- Один docker compose project на cook (`mc-<task>`).
 - Каждый участник — свой контейнер на своей bridge-сети
   (`net-participant-<name>`); они не видят друг друга по DNS/IP.
 - Подписочные креды снапшотятся в `cooks/<task>/.auth/<flavor>/`
@@ -114,15 +114,15 @@ participants:
 
 | Команда | Что делает |
 |---|---|
-| `multivarka new <task> [--participants ...]` | Создать cook из шаблонов. |
-| `multivarka doctor [<task>]` | Preflight: docker, compose, creds, Dockerfile-ы, base images. |
-| `multivarka build-base [<flavor>...]` | Собрать shared base-образ (автоматически собирается перед первым cook'ом). |
-| `multivarka cook <task>` | Запуск всех участников параллельно. |
-| `multivarka refine <task>` | Round N+1 с feedback'ом поверх предыдущего out. |
-| `multivarka judge <task>` | Анонимизированное судейство всеми judge'ами. |
-| `multivarka report <task>` | Свод в `leaderboard.md`. |
-| `multivarka add-participant <task> NAME[=FLAVOR]` | Расширить cook новым участником. |
-| `multivarka clean [<task>] [--all]` | `compose down -v --rmi local` + удалить `.auth/`. |
+| `multicooker new <task> [--participants ...]` | Создать cook из шаблонов. |
+| `multicooker doctor [<task>]` | Preflight: docker, compose, creds, Dockerfile-ы, base images. |
+| `multicooker build-base [<flavor>...]` | Собрать shared base-образ (автоматически собирается перед первым cook'ом). |
+| `multicooker cook <task>` | Запуск всех участников параллельно. |
+| `multicooker refine <task>` | Round N+1 с feedback'ом поверх предыдущего out. |
+| `multicooker judge <task>` | Анонимизированное судейство всеми judge'ами. |
+| `multicooker report <task>` | Свод в `leaderboard.md`. |
+| `multicooker add-participant <task> NAME[=FLAVOR]` | Расширить cook новым участником. |
+| `multicooker clean [<task>] [--all]` | `compose down -v --rmi local` + удалить `.auth/`. |
 
 ## Статус
 

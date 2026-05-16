@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "multivarka"
+name = "multicooker"
 version = "0.1.0"
 description = "Run several LLM agents on the same task in parallel sandboxes, then judge them."
 requires-python = ">=3.10"
@@ -12,13 +12,13 @@ dependencies = [
 ]
 
 [project.scripts]
-multivarka = "multivarka.cli:main"
+multicooker = "multicooker.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["multivarka*"]
+include = ["multicooker*"]
 
 [tool.setuptools.package-data]
-"multivarka" = [
+"multicooker" = [
     "templates/**/*",
     "templates/**/.gitignore",
     "templates/**/.gitkeep",

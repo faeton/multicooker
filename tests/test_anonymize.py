@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from multivarka.judge import _anonymize
+from multicooker.judge import _anonymize
 
 
 def _make_sealed(tmp_path: Path, participants: list[str]) -> Path:

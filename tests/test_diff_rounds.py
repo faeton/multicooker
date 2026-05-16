@@ -1,4 +1,4 @@
-"""Smoke for `multivarka diff <task> N M`.
+"""Smoke for `multicooker diff <task> N M`.
 
 Builds a fake cook directory shaped like a real one (brief.yaml +
 rounds/1/<p>/ + rounds/2/<p>/) and verifies diff_rounds() detects
@@ -10,7 +10,7 @@ from __future__ import annotations
 import textwrap
 from pathlib import Path
 
-from multivarka.diff_rounds import diff_rounds
+from multicooker.diff_rounds import diff_rounds
 
 
 def _make_cook(tmp_path: Path) -> Path:

@@ -8,7 +8,7 @@
 ## TL;DR — два пути для claude
 
 **Option A (default на macOS): Keychain snapshot.** Перед каждым
-`cook` мультиварка вытаскивает credential JSON из Keychain
+`cook` multicooker вытаскивает credential JSON из Keychain
 (`security find-generic-password -s "Claude Code-credentials" -w`)
 и кладёт в `cooks/<task>/.auth/claude/.credentials.json`, который
 RO-маунтится в `/root/.claude/`. Это формат, который Linux-сборка
@@ -70,18 +70,18 @@ named volume.
 
 ```bash
 # 1. Собрать образ с claude-code:
-docker build -t mv-claude-base \
+docker build -t mc-claude-base \
   -f templates/cook/participants/claude/Dockerfile.base .
 
 # 2. Залогиниться внутри контейнера, складывая creds в named volume:
 docker run --rm -it \
-  -v mv-claude-auth:/root/.claude \
-  mv-claude-base \
+  -v mc-claude-auth:/root/.claude \
+  mc-claude-base \
   claude /login
 
 # claude напечатает URL → откроешь в браузере на хосте → авторизуешь.
 # Токен запишется в /root/.claude/ внутри контейнера, а это named
-# volume mv-claude-auth, переживёт удаление контейнера.
+# volume mc-claude-auth, переживёт удаление контейнера.
 ```
 
 `Dockerfile.base` (минимальный):
@@ -100,13 +100,13 @@ WORKDIR /work
 
 ```yaml
 volumes:
-  - mv-claude-auth:/root/.claude          # из named volume, RW
+  - mc-claude-auth:/root/.claude          # из named volume, RW
   - ./BRIEF.md:/work/BRIEF.md:ro
   - ./raw/:/work/raw/:ro
   - ./work/claude/out/:/work/out/:rw
 ```
 
-`mv-claude-auth` объявлен в `volumes:` секции compose как external
+`mc-claude-auth` объявлен в `volumes:` секции compose как external
 named volume, чтобы не пересоздавался каждым `down -v`.
 
 ### Когда токен протух
@@ -115,8 +115,8 @@ named volume, чтобы не пересоздавался каждым `down -v
 
 ```bash
 docker run --rm -it \
-  -v mv-claude-auth:/root/.claude \
-  mv-claude-base claude /login
+  -v mc-claude-auth:/root/.claude \
+  mc-claude-base claude /login
 ```
 
 Симптом: cook запускается, в логах `claude` видишь "Please run

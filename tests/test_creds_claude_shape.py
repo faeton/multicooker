@@ -20,11 +20,11 @@ from unittest.mock import patch
 
 import pytest
 
-from multivarka import creds
+from multicooker import creds
 
 
 # Canonical shape as of v0.1 (verified against real keychain entry on macOS,
-# see commit history of multivarka/creds.py — `claudeAiOauth` has been the
+# see commit history of multicooker/creds.py — `claudeAiOauth` has been the
 # top-level key since the file was introduced).
 GOOD_BLOB = json.dumps({
     "claudeAiOauth": {
@@ -39,7 +39,7 @@ GOOD_BLOB = json.dumps({
 
 def test_keychain_good_shape_writes_credentials_json(tmp_path: Path) -> None:
     """Happy path: a well-formed keychain blob is written through verbatim."""
-    with patch("multivarka.creds.subprocess.check_output", return_value=GOOD_BLOB):
+    with patch("multicooker.creds.subprocess.check_output", return_value=GOOD_BLOB):
         creds._snapshot_claude_macos(tmp_path)
 
     out = tmp_path / "claude" / ".credentials.json"
@@ -53,14 +53,14 @@ def test_keychain_good_shape_writes_credentials_json(tmp_path: Path) -> None:
 def test_keychain_unexpected_shape_raises(tmp_path: Path) -> None:
     """If Anthropic renames/restructures the top-level key, fail loud."""
     bad = json.dumps({"someNewKey": {"token": "..."}}).encode()
-    with patch("multivarka.creds.subprocess.check_output", return_value=bad):
+    with patch("multicooker.creds.subprocess.check_output", return_value=bad):
         with pytest.raises(creds.CredsError, match="unexpected shape"):
             creds._snapshot_claude_macos(tmp_path)
 
 
 def test_keychain_invalid_json_raises(tmp_path: Path) -> None:
     """Garbled blob (e.g. truncated or wrong service) is reported clearly."""
-    with patch("multivarka.creds.subprocess.check_output", return_value=b"not json"):
+    with patch("multicooker.creds.subprocess.check_output", return_value=b"not json"):
         with pytest.raises(creds.CredsError, match="not valid JSON"):
             creds._snapshot_claude_macos(tmp_path)
 
@@ -70,6 +70,6 @@ def test_keychain_missing_entry_raises(tmp_path: Path) -> None:
     err = subprocess.CalledProcessError(
         returncode=44, cmd=["security"], stderr=b"SecKeychainSearchCopyNext: not found",
     )
-    with patch("multivarka.creds.subprocess.check_output", side_effect=err):
+    with patch("multicooker.creds.subprocess.check_output", side_effect=err):
         with pytest.raises(creds.CredsError, match="not found"):
             creds._snapshot_claude_macos(tmp_path)

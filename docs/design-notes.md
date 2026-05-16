@@ -39,39 +39,39 @@ Snapshot читает источник и кладёт в `cooks/<task>/.auth/<f
        flavor: claude
        profile: personal
    ```
-2. Хранилище: `~/.multivarka/profiles/<profile>/<flavor>/` —
+2. Хранилище: `~/.multicooker/profiles/<profile>/<flavor>/` —
    filesystem, не Keychain. Плоская структура, явное копирование.
 3. `creds.py:snapshot_for_profile(flavor, profile)` — если
    `profile == "default"`, текущая логика. Иначе читает
-   `~/.multivarka/profiles/<profile>/<flavor>/`.
-4. **Login wrapper** — самая мутная часть. `multivarka login
+   `~/.multicooker/profiles/<profile>/<flavor>/`.
+4. **Login wrapper** — самая мутная часть. `multicooker login
    <flavor> --profile <name>` запускает CLI в одноразовом
    контейнере с пустым `HOME`, юзер делает OAuth интерактивно,
    потом снимок `$HOME/.<cli>/` копируется в
-   `~/.multivarka/profiles/<name>/<flavor>/`.
+   `~/.multicooker/profiles/<name>/<flavor>/`.
    - **claude — особый случай.** На macOS он пишет в Keychain, не
      в файл. В контейнере он падает в `~/.claude/.credentials.json`
      (Linux fallback). Это **то, что нам нужно** — мы как раз
      хотим файловый артефакт. Но это означает, что для профилей
      у пользователя получается линукс-стилевой `claude` логин,
      не интегрированный с системным Keychain. Документировать.
-5. `doctor` валидирует существование `~/.multivarka/profiles/<p>/<f>/`
+5. `doctor` валидирует существование `~/.multicooker/profiles/<p>/<f>/`
    для каждого упомянутого профиля, прежде чем cook.
 
 **Что сломается на простом пути.** Если просто добавить `profile:`
 без login-wrapper'а, юзеру придётся вручную копировать
-`~/.codex/auth.json` в `~/.multivarka/profiles/work/codex/auth.json`
+`~/.codex/auth.json` в `~/.multicooker/profiles/work/codex/auth.json`
 и т.п. Это работает, но плохой UX. Login-wrapper — основной труд.
 
 **Скоуп.** Две сессии. Можно делить:
 - сессия 1: `profile:` поле + ручное хранилище + `doctor` checks.
-- сессия 2: `multivarka login --profile`.
+- сессия 2: `multicooker login --profile`.
 
 ---
 
 ## Replayable traces — full version
 
-**Лайт сделан.** `trace.json` per-cell + `multivarka rejudge`. Этого
+**Лайт сделан.** `trace.json` per-cell + `multicooker rejudge`. Этого
 достаточно для пересудить тот же snapshot с новой рубрикой без
 повторного cook'а.
 
@@ -104,9 +104,9 @@ structured output. Существуют режимы:
 
 ## Registry / versioned task specs
 
-**Идея.** `~/.multivarka/registry/<spec-name>@<version>/` —
+**Идея.** `~/.multicooker/registry/<spec-name>@<version>/` —
 шаблон арены (BRIEF.md, JUDGE_BRIEF.md, brief.yaml.template,
-raw/). `multivarka new --from-spec <spec>@<v>` материализует.
+raw/). `multicooker new --from-spec <spec>@<v>` материализует.
 
 **Зачем.** Стандартные арены: `arc-style`, `code-review-pr@1.2`,
 `pr-summary@1.0`. Шарятся между людьми/проектами, версионируются,
@@ -122,7 +122,7 @@ overengineering.
   brief.yaml ⇒ major bump.
 - Конфликт registry ↔ user override: registry даёт template,
   cook-specific brief.yaml поверх него.
-- Distribution: git-based registry (`multivarka pull <git-url>` →
+- Distribution: git-based registry (`multicooker pull <git-url>` →
   локальный clone). Не делать центральный server.
 - Required raw materials: spec может объявить `raw/` requirements
   (file globs + checksums); `new --from-spec` падает если в

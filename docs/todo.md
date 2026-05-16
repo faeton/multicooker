@@ -1,6 +1,6 @@
 # TODO
 
-Что осталось сделать в multivarka — реалистично, по приоритетам.
+Что осталось сделать в multicooker — реалистично, по приоритетам.
 Главный принцип не меняется: сначала честное и воспроизводимое
 поведение, потом полировка. Раздел "Сделано (история)" внизу — для
 ориентира, что уже выкошено за последние сессии.
@@ -16,9 +16,9 @@
 - [x] Integration smoke без реальных LLM CLI: `dummy` flavor готов
   (`templates/cook/participants/dummy/`, alpine-based, no auth).
   Один entrypoint покрывает participant- и judge-режимы (branch
-  на `MULTIVARKA_JUDGE`). Полный `new→cook→judge→report` цикл
+  на `MULTICOOKER_JUDGE`). Полный `new→cook→judge→report` цикл
   отрабатывает за ~10 секунд без подписочных кредов.
-- [x] Packaging: `templates/` переехал внутрь `multivarka/templates/`;
+- [x] Packaging: `templates/` переехал внутрь `multicooker/templates/`;
   все Path-ссылки отвязаны от `parents[1]` (раньше работало только
   из репо, теперь работает после `pip install`). `.dockerignore`
   в каждом participant-шаблоне. Wheel build + smoke install в
@@ -36,7 +36,7 @@
 - [x] README переписан вокруг docker-only first-run:
   `doctor → new → cook → judge → report` + refine-петля + multi-flavor.
 - [x] HOWTO.md синхронизирован: выпилены упоминания
-  `~/.multivarka/auth.env` / API-ключей / host_runner; добавлен
+  `~/.multicooker/auth.env` / API-ключей / host_runner; добавлен
   раздел про refine; раздел "Host-mode vs Docker-mode" заменён на
   "Docker-mode (единственный)".
 - [x] `docs/security.md` — threat model: что защищает Docker, что
@@ -69,7 +69,7 @@
   `--participants` парсит `NAME=FLAVOR`, `add-participant`).
 - [x] Поддержать **разные модели одного flavor**: brief.yaml
   принимает `model:` per participant/judge; compose-render
-  пробрасывает в контейнер как `MULTIVARKA_MODEL=...`, и каждый
+  пробрасывает в контейнер как `MULTICOOKER_MODEL=...`, и каждый
   entrypoint.sh добавляет соответствующий argv (`--model` для
   claude и gemini, `-c model=...` для codex). Дефолт без model =
   CLI выбирает сам как раньше.
@@ -90,13 +90,13 @@
   снапшотится (`rounds/N/<p>/` + `rounds/N/_inbox/`), как
   inline-вставляются FEEDBACK.md / FEEDBACK_<flavor>.md в
   PROMPT.txt, round-counter, что НЕ переносится между раундами.
-- [x] `multivarka refine --feedback <path>` — указать FEEDBACK файл
+- [x] `multicooker refine --feedback <path>` — указать FEEDBACK файл
   вне cook_dir (для повторного использования feedback'а между
   cook'ами). Покрыто интеграционным тестом.
 - [x] Возможность refine только подмножества участников
   (`--participants`) — покрыто интеграционным тестом
   `test_refine_participants_subset`.
-- [x] `multivarka diff <task> N M [--participants ...]` — unified
+- [x] `multicooker diff <task> N M [--participants ...]` — unified
   diff между раундами по каждому участнику. Хэндлит added/
   deleted/modified/binary, "no changes" notice. Покрыт тестами
   (`tests/test_diff_rounds.py`).
@@ -105,7 +105,7 @@
 
 - [x] Replayable traces (light): per-cell `trace.json`
   (prompt/model/exit/duration/started_at) пишется в
-  `work/<p>/trace.json`. `multivarka rejudge <task>` пере-сильит
+  `work/<p>/trace.json`. `multicooker rejudge <task>` пере-сильит
   `_inbox/` из текущих `work/<p>/out/` и запустит судей заново
   без повторного cook'а. Полная structured-trace версия (tool
   calls / replay через другой CLI) отложена — см.
@@ -115,7 +115,7 @@
   §"Registry / versioned task specs".
 - [x] Deterministic validators (AgentV / Iris) — валидировать
   brief.yaml до запуска. Реализовано как hand-rolled валидатор
-  в `multivarka/brief_schema.py` (no extra deps), подключён в
+  в `multicooker/brief_schema.py` (no extra deps), подключён в
   doctor + cook/refine/judge. Покрыто 13 тестами.
 - [ ] Sandbox-providers как у OpenHands: Docker по умолчанию,
   remote/Kubernetes как опция. Отложено — см.
@@ -137,14 +137,14 @@
 
 - ✅ Shared base images: `templates/base/<flavor>/Dockerfile` ставит
   тяжёлое (node:22-slim + apt + `npm i -g <cli>` + `node` user).
-  Cook participant Dockerfile укоротился до `FROM mv-base-<flavor>`
+  Cook participant Dockerfile укоротился до `FROM mc-base-<flavor>`
   + entrypoint — build cook-образа ~1 сек вместо 2-3 минут. CLI:
-  `multivarka build-base [<flavor>...] [--force]`. cook/refine/
+  `multicooker build-base [<flavor>...] [--force]`. cook/refine/
   judge сами зовут `base_images.ensure_built()` перед compose
   build, так что для пользователя это прозрачно.
-- ✅ `multivarka doctor` расширен: проверка Dockerfile per flavor
+- ✅ `multicooker doctor` расширен: проверка Dockerfile per flavor
   (FAIL если нет ни в `cooks/<task>/participants/<flavor>/` ни в
-  templates), проверка наличия `mv-base-<flavor>:latest` (WARN по
+  templates), проверка наличия `mc-base-<flavor>:latest` (WARN по
   умолчанию, FAIL под `--strict`).
 - ✅ Сетевая изоляция между контейнерами одного cook'а: каждый
   участник и каждый судья — на собственной bridge-сети
@@ -167,16 +167,16 @@
 - ✅ Friendly auth failure: `_snapshot_creds_or_die` ловит
   `CredsError`, печатает причину + remediation, exit=2 без
   traceback'а. Используется в cook/judge/refine.
-- ✅ `multivarka doctor` — preflight для docker + creds, по
+- ✅ `multicooker doctor` — preflight для docker + creds, по
   cook-имени или по списку flavors.
-- ✅ `multivarka add-participant <task> NAME[=FLAVOR]` — расширение
+- ✅ `multicooker add-participant <task> NAME[=FLAVOR]` — расширение
   существующего cook'а без правки brief.yaml вручную.
 - ✅ `--participants NAME=FLAVOR` в `new`/`cook`/`refine` поддерживает
   множественные участники одного flavor (claude-a, claude-b…).
-- ✅ `multivarka refine` — round-N итерация поверх предыдущего
+- ✅ `multicooker refine` — round-N итерация поверх предыдущего
   output'а; снапшот в `rounds/<N>/`, inline shared+personal
   FEEDBACK в PROMPT.txt.
-- ✅ `multivarka clean` — `compose down -v --rmi local` для одного
+- ✅ `multicooker clean` — `compose down -v --rmi local` для одного
   cook'а или `--all`; флаги `--keep-creds`, `--dry-run`.
 - ✅ `.auth/` записывается в per-cook `.gitignore` через
   `creds.snapshot()`.
