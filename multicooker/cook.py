@@ -88,7 +88,15 @@ def _setup_worktree(cook_dir: Path, participant: str, prompt_text: str) -> Path:
     wt = cook_dir / "work" / participant
     wt.mkdir(parents=True, exist_ok=True)
     (wt / "out").mkdir(exist_ok=True)
-    (wt / "PROMPT.txt").write_text(prompt_text)
+    # Write PROMPT.txt + fsync so the file is durably on disk before compose
+    # bind-mounts it. On native Linux docker, mounting a single file that
+    # isn't visible to the daemon yet can silently materialize as an empty
+    # directory inside the container (and entrypoints exit on missing file).
+    prompt_path = wt / "PROMPT.txt"
+    with open(prompt_path, "w") as f:
+        f.write(prompt_text)
+        f.flush()
+        os.fsync(f.fileno())
     # Tear down stale legacy host-mode symlinks so the bind-mounts don't see them.
     for stale in (wt / "BRIEF.md", wt / "raw"):
         if stale.is_symlink():

@@ -40,12 +40,19 @@ def _run(args: list[str], cwd: Path) -> subprocess.CompletedProcess:
     )
 
 
+def _fail(res: subprocess.CompletedProcess) -> str:
+    """Format both streams for assertion messages — compose lifecycle goes to
+    stderr while `[cook]` summary (with exit codes) goes to stdout, and
+    seeing only one stream hides half the picture."""
+    return f"exit={res.returncode}\n--- stdout ---\n{res.stdout}\n--- stderr ---\n{res.stderr}"
+
+
 def test_full_pipeline_on_dummy(tmp_path: Path):
     root = tmp_path / "cooks"
     # 1. new
     res = _run(["new", "smoke", "--root", str(root),
                 "--participants", "a=dummy,b=dummy"], cwd=REPO_ROOT)
-    assert res.returncode == 0, res.stderr or res.stdout
+    assert res.returncode == 0, _fail(res)
     cook_dirs = list(root.iterdir())
     assert len(cook_dirs) == 1
     cook = cook_dirs[0]
@@ -59,17 +66,17 @@ def test_full_pipeline_on_dummy(tmp_path: Path):
 
     # 2. cook
     res = _run(["cook", cook.name, "--root", str(root)], cwd=REPO_ROOT)
-    assert res.returncode == 0, res.stderr or res.stdout
+    assert res.returncode == 0, _fail(res)
     assert (cook / "RUN_RESULT.json").exists()
 
     # 3. judge
     res = _run(["judge", cook.name, "--root", str(root)], cwd=REPO_ROOT)
-    assert res.returncode == 0, res.stderr or res.stdout
+    assert res.returncode == 0, _fail(res)
     assert (cook / "judging" / "dummy-judge" / "scores.json").exists()
 
     # 4. report
     res = _run(["report", cook.name, "--root", str(root)], cwd=REPO_ROOT)
-    assert res.returncode == 0, res.stderr or res.stdout
+    assert res.returncode == 0, _fail(res)
     leaderboard = (cook / "leaderboard.md").read_text()
     assert "| a |" in leaderboard
     assert "| b |" in leaderboard
@@ -89,7 +96,7 @@ def test_full_pipeline_on_dummy(tmp_path: Path):
     edited = "REJUDGED_MARKER\n"
     (cook / "work" / "a" / "out" / "RESULT.md").write_text(edited)
     res = _run(["rejudge", cook.name, "--root", str(root)], cwd=REPO_ROOT)
-    assert res.returncode == 0, res.stderr or res.stdout
+    assert res.returncode == 0, _fail(res)
     # The sealed inbox should reflect the edit (re-sealed from work/).
     sealed_a = (cook / "judging" / "_inbox" / "a" / "out" / "RESULT.md").read_text()
     assert "REJUDGED_MARKER" in sealed_a
@@ -109,7 +116,7 @@ def test_refine_participants_subset(tmp_path: Path):
     root = tmp_path / "cooks"
     res = _run(["new", "subset", "--root", str(root),
                 "--participants", "a=dummy,b=dummy"], cwd=REPO_ROOT)
-    assert res.returncode == 0, res.stderr or res.stdout
+    assert res.returncode == 0, _fail(res)
     cook = next(root.iterdir())
 
     import yaml
@@ -120,14 +127,14 @@ def test_refine_participants_subset(tmp_path: Path):
 
     # Round 1 (cook).
     res = _run(["cook", cook.name, "--root", str(root)], cwd=REPO_ROOT)
-    assert res.returncode == 0, res.stderr or res.stdout
+    assert res.returncode == 0, _fail(res)
 
     (cook / "FEEDBACK.md").write_text("Make it longer.\n")
 
     # Refine only `a` → round 2.
     res = _run(["refine", cook.name, "--root", str(root),
                 "--participants", "a"], cwd=REPO_ROOT)
-    assert res.returncode == 0, res.stderr or res.stdout
+    assert res.returncode == 0, _fail(res)
 
     # rounds/1/a/ snapshotted (a's pre-refine work). b was excluded.
     assert (cook / "rounds" / "1" / "a").is_dir()
@@ -149,7 +156,7 @@ def test_refine_external_feedback_path(tmp_path: Path):
     root = tmp_path / "cooks"
     res = _run(["new", "fb", "--root", str(root),
                 "--participants", "a=dummy"], cwd=REPO_ROOT)
-    assert res.returncode == 0, res.stderr or res.stdout
+    assert res.returncode == 0, _fail(res)
     cook = next(root.iterdir())
 
     import yaml
@@ -159,7 +166,7 @@ def test_refine_external_feedback_path(tmp_path: Path):
     brief_yaml.write_text(yaml.safe_dump(cfg, sort_keys=False))
 
     res = _run(["cook", cook.name, "--root", str(root)], cwd=REPO_ROOT)
-    assert res.returncode == 0, res.stderr or res.stdout
+    assert res.returncode == 0, _fail(res)
 
     # External feedback file outside the cook.
     fb = tmp_path / "shared-feedback.md"
@@ -167,7 +174,7 @@ def test_refine_external_feedback_path(tmp_path: Path):
 
     res = _run(["refine", cook.name, "--root", str(root),
                 "--feedback", str(fb)], cwd=REPO_ROOT)
-    assert res.returncode == 0, res.stderr or res.stdout
+    assert res.returncode == 0, _fail(res)
 
     # Dummy participant copies PROMPT.txt to RESULT.md verbatim, so the
     # external feedback content must show up in round-2 RESULT.md.
