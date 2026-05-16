@@ -7,6 +7,28 @@ what's been knocked out in recent sessions.
 
 ## Priority 0 — next session
 
+- [ ] Re-enable `test_integration_dummy.py` on GitHub Actions CI.
+  Currently skipped via `--ignore=tests/test_integration_dummy.py`
+  in `.github/workflows/ci.yml`. Locally on macOS Docker Desktop /
+  OrbStack the 3 tests pass; on ubuntu-latest GH runners (native
+  Linux docker) containers build + start + stop, but `cook` returns
+  1. **Hypothesis**: bind-mounting a single freshly-written file
+  (`{cd}/work/{p}/PROMPT.txt:/work/PROMPT.txt:ro` in
+  `compose_render.py:126`) sometimes materializes as a directory
+  inside the container on native Linux docker; dummy entrypoint
+  then exits 64 on `[ ! -f /work/PROMPT.txt ]`.
+  **What's already done**: `_setup_worktree` now writes PROMPT.txt
+  with explicit `f.flush() + os.fsync()` (`cook.py:86`); test
+  assertions use `_fail(res)` to surface exit code + stdout +
+  stderr (compose lifecycle is on stderr, `[cook] ...` summary
+  with the real exit code is on stdout — looking at one stream
+  hid the picture).
+  **Next step**: drop `--ignore` in CI, push, and read the actual
+  exit code from `_fail(res)`. If it's 64 → fsync didn't fully
+  fix the race; try atomic-rename (`os.replace`) for PROMPT.txt
+  or mount the parent dir instead of the single file. If it's
+  something else, that error message will say what.
+
 ## Priority 1 — after v0.2 cook
 
 - [x] Tests: parse_participant, add_participant, detect_rate_limit
