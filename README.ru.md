@@ -110,7 +110,53 @@ pip install -e .
 Хочешь попробовать pipeline без подписочных кредов — есть flavor
 `dummy`. См. [`examples/hello-task`](examples/hello-task/).
 
-## Первый запуск (за 5 минут)
+## Быстрый старт: агент сам соберёт cook (10 секунд)
+
+Самый быстрый способ работать с multicooker — запустить
+LLM-агента **внутри репозитория** и дать ему собрать и прогнать
+cook за тебя. В репо лежит `CLAUDE.md` (и симлинк `AGENTS.md` для
+codex / gemini), который уже объясняет любому агенту устройство
+проекта, форму cook'а и правило что рубрика синхронизируется
+между `brief.yaml` и `JUDGE_BRIEF.md`. Агент читает это и делает
+рутинную часть за тебя.
+
+```bash
+git clone https://github.com/faeton/multicooker && cd multicooker
+pip install -e .
+
+claude        # или: codex, или: gemini — все читают AGENTS.md
+```
+
+Дальше просто опиши задачу словами:
+
+> *«Собери cook `landing-redesign`. Сравни claude / codex / gemini
+> на single-file HTML hero для [продукт]. Суди по visual-hierarchy,
+> typography, color-discipline, content-fit, polish. Референсы —
+> `~/work/brand/notes.md` и `~/work/brand/voice.md`. Потом запусти
+> cook + judge + report.»*
+
+Агент читает `CLAUDE.md` и `examples/design-landing/` как шаблон,
+пишет `BRIEF.md` / `JUDGE_BRIEF.md` / `brief.yaml`, копирует твои
+референсы в `raw/`, запускает `multicooker cook`, дожидается, потом
+прогоняет `judge` и `report`. Ты читаешь leaderboard.
+
+Итерация — тем же разговором:
+
+> *«Общий фидбек: слишком много воздуха, ужми layout. Конкретно для
+> `claude`: палитру оставь, но подтяни type scale. Refine.»*
+
+Или — новый cook с теми же референсами (другая задача, те же
+brand-assets):
+
+> *«Референсы как в прошлом cook'е. Новый бриф: 3-кадровая
+> onboarding-последовательность вместо одного лендинга. Суди те
+> же dimensions плюс story-clarity. Запусти.»*
+
+Это канонический workflow. Ручной режим ниже полезен чтобы
+понять что под капотом, но повседневно ты так пользоваться не
+будешь.
+
+## Ручной режим (за 5 минут, полный контроль)
 
 ```bash
 # 1. Preflight — docker, compose, креды для каждого flavor

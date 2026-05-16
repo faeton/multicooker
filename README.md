@@ -111,7 +111,55 @@ Requirements:
 Want to try the pipeline without subscription creds? There's a
 `dummy` flavor — see [`examples/hello-task`](examples/hello-task/).
 
-## First run (5 minutes)
+## Quick start: let an agent scaffold the cook (10 seconds)
+
+The fastest way to use multicooker is to fire up an LLM agent
+**inside the repo** and let it scaffold and run the cook for you.
+The repo ships with a `CLAUDE.md` (and an `AGENTS.md` symlink for
+codex / gemini) that already explains the project, the shape of a
+cook, and the rule that the rubric stays in sync between
+`brief.yaml` and `JUDGE_BRIEF.md`. Any agent reading it can do the
+boring part for you.
+
+```bash
+git clone https://github.com/faeton/multicooker && cd multicooker
+pip install -e .
+
+claude        # or: codex, or: gemini — they all read AGENTS.md
+```
+
+Then describe what you want in plain language:
+
+> *"Set up a cook called `landing-redesign`. Compare
+> claude / codex / gemini on a single-file HTML hero for [product].
+> Judge on visual-hierarchy, typography, color-discipline,
+> content-fit, polish. References are at `~/work/brand/notes.md`
+> and `~/work/brand/voice.md`. Then run cook + judge + report."*
+
+The agent reads `CLAUDE.md` and `examples/design-landing/` as
+templates, drafts your `BRIEF.md` / `JUDGE_BRIEF.md` / `brief.yaml`,
+copies the refs into `raw/`, kicks off `multicooker cook`, waits
+for it to finish, then runs `judge` and `report`. You read the
+leaderboard.
+
+Iterating is the same conversation:
+
+> *"Feedback for everyone: too much whitespace, push for denser
+> layout. Specifically for `claude`: keep the color palette but
+> tighten the type scale. Refine."*
+
+Or — start a new cook reusing the same reference material (different
+task, same brand assets):
+
+> *"Same refs as the previous cook. New brief: a 3-frame onboarding
+> sequence instead of a single landing. Judge the same dimensions
+> plus story-clarity. Run it."*
+
+This is the canonical workflow. The manual flow below is useful
+for understanding the moving parts, but it's not how you'd
+typically use the tool day-to-day.
+
+## Manual flow (5 minutes, full control)
 
 ```bash
 # 1. Preflight — docker, compose, creds for each flavor
