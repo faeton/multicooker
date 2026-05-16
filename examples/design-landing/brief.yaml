@@ -1,0 +1,31 @@
+name: design-landing
+timeout_s: 600            # design tasks: give the model room to think
+judge_timeout_s: 300
+
+# Real LLM agents. Need at least one subscription credential set up
+# (see docs/auth.md). Comment out flavors you don't have creds for.
+participants:
+  - { name: claude, flavor: claude }
+  - { name: codex,  flavor: codex }
+  - { name: gemini, flavor: gemini }
+
+# Anti-self-judge: each judge scores everyone except its own flavor.
+# Two judges, different flavors → robust scoring even if one model
+# has aesthetic preferences favoring its own output.
+judges:
+  - { name: claude-judge, flavor: claude }
+  - { name: codex-judge,  flavor: codex }
+
+rubric:
+  scale: [0, 5]
+  dimensions:
+    - id: visual-hierarchy
+      weight: 25
+    - id: typography
+      weight: 20
+    - id: color-discipline
+      weight: 20
+    - id: content-fit
+      weight: 20
+    - id: polish
+      weight: 15
