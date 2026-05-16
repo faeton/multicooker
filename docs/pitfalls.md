@@ -1,123 +1,127 @@
-# Pitfalls: грабли из reproxy/arena
+# Pitfalls: gotchas from reproxy/arena
 
-Это перенос lessons learned из ночных запусков reproxy-arena. Все
-эти баги мы уже один раз ловили — экономь время, не лови повторно.
+This is a port of lessons learned from reproxy-arena overnight
+runs. We've caught every one of these bugs once already — save
+your time, don't catch them again.
 
-## #1. Симлинки внутрь sandbox-allowlist'а CLI — не работают
+## #1. Symlinks inside a CLI sandbox allowlist — don't work
 
-CLI-сэндбоксы (`claude --add-dir <dir>`, `codex --sandbox
-workspace-write`) разрешают чтение/запись только внутри указанной
-папки. **Если внутри папки лежит симлинк, ведущий наружу — путь
-рассольвится в "наружу" и Read/Write/Bash тихо откажут.** Никаких
-ошибок, просто пустой результат.
+CLI sandboxes (`claude --add-dir <dir>`, `codex --sandbox
+workspace-write`) only allow reads/writes inside the named
+directory. **If there's a symlink inside the directory pointing
+outside — the path resolves to "outside" and Read/Write/Bash will
+silently refuse.** No errors, just an empty result.
 
-В arena-judge'е это вылезло так: судья получал `./inbox` и
-`./outbox` симлинками — 97% оценок оказались плейсхолдерами.
+In arena-judge this manifested as: the judge got `./inbox` and
+`./outbox` as symlinks — 97% of scores came out as placeholders.
 
-**Правило:** в сэндбокс CLI монтируем **только реальные пути**, без
-симлинков. Если нужно "показать" файл — копируем (`cp`), не
-симлинкуем. Это особенно важно в `judge`: материалы в work-dir'е
-судьи всегда копируются.
+**Rule:** in CLI sandboxes mount **only real paths**, no
+symlinks. If you need to "show" a file — copy it (`cp`), don't
+symlink. This matters especially in `judge`: materials in the
+judge's work-dir are always copies.
 
-## #2. Variadic argv flags съедают позиционный prompt
+## #2. Variadic argv flags eat the positional prompt
 
 ```bash
-# СЛОМАНО:
+# BROKEN:
 claude --add-dir /work --print "prompt"
-# claude трактует "prompt" как ещё один path для --add-dir,
-# stdin пустой, выход 0 байт.
+# claude treats "prompt" as one more path for --add-dir,
+# stdin is empty, output is 0 bytes.
 
-# ПРАВИЛЬНО:
+# CORRECT:
 claude --print "prompt" --add-dir /work
 ```
 
-То же бывает у codex и gemini — порядок argv проверь по
-`reproxy/arena/coding-sandbox/host_runner.py:CLI_COMMANDS`. Это
-эталон.
+Same happens with codex and gemini — check argv order against
+`reproxy/arena/coding-sandbox/host_runner.py:CLI_COMMANDS`.
+That's the reference.
 
-## #3. exit-code = 0 ≠ всё хорошо
+## #3. exit-code = 0 ≠ all good
 
-Все три CLI (claude, codex, gemini) возвращают 0 даже когда
-упёрлись в rate-limit, потому что они "успешно сообщили о лимите".
-Если ориентироваться на exit-code, ты пометишь rate-limited cell как
-успешный.
+All three CLIs (claude, codex, gemini) return 0 even when they've
+hit a rate-limit, because they "successfully reported the limit".
+If you go by exit-code, you'll mark a rate-limited cell as
+successful.
 
-**Правило:** всегда парси stderr на known-bad patterns. Шаблоны —
-в `multicooker/host_runner.py:_RL_PATTERNS`, наследие из arena.
+**Rule:** always parse stderr for known-bad patterns. The
+patterns are in `multicooker/host_runner.py:_RL_PATTERNS`, legacy
+from arena.
 
-## #4. Codex quota раз в ~5 часов
+## #4. Codex quota once every ~5 hours
 
-OpenAI ChatGPT Plus квота обычно ресетится раз в ~5 часов. Codex
-посреди cook'а часто умирает, остальные участники не должны
-блокироваться.
+OpenAI ChatGPT Plus quota typically resets every ~5 hours. Codex
+often dies mid-cook, the other participants must not be blocked.
 
-**Правило:** rate-limit одного участника = `deferred`-флаг для
-этого слота, остальные продолжают. Никаких inline-sleep'ов.
-Resume — отдельный flow (`multicooker resume <task>`, в TODO для
-v0.2).
+**Rule:** rate-limit on one participant = `deferred` flag for
+that slot, the others keep going. No inline sleeps. Resume is a
+separate flow (`multicooker resume <task>`, in TODO for v0.2).
 
-## #5. Не верь leaderboard'у первого запуска
+## #5. Don't trust the leaderboard of the first run
 
-reproxy-arena overnight #1 показал gemini > codex > claude. После
-починки argv-бага и judge-симлинков порядок изменился. Если
-смоук-тест не зелёный — leaderboard ничего не значит.
+reproxy-arena overnight #1 showed gemini > codex > claude. After
+fixing the argv bug and judge symlinks, the order changed. If
+the smoke test isn't green — the leaderboard means nothing.
 
-**Правило:** прежде чем верить результатам, убедись:
-- работают ли все три CLI базово (`out/RESULT.md` непуст);
-- судья написал `scores.json` с реальными числами, а не
-  плейсхолдерами;
-- mapping A↔flavor рандомизирован per-run, а не закэширован.
+**Rule:** before trusting results, confirm:
+- do all three CLIs basically work (`out/RESULT.md` is
+  non-empty);
+- did the judge write `scores.json` with real numbers, not
+  placeholders;
+- is the A↔flavor mapping randomized per-run, not cached.
 
-## #6. macOS sleep кладёт API-коннекты
+## #6. macOS sleep kills API connections
 
-Закрытая крышка → `caffeinate -dimsu` иногда не помогает (clamshell
-mode без внешнего питания) → коннекты к Anthropic API рвутся.
-Симптом: участник вышел рано с какой-то transient-ошибкой.
+Lid closed → `caffeinate -dimsu` sometimes doesn't help
+(clamshell mode without external power) → connections to
+Anthropic API drop. Symptom: a participant exited early with
+some transient error.
 
-**Правило:** wall-clock vs monotonic skew > 60s = ноут спал.
-Одна попытка retry. Логика — в arena `host_runner.py`. Для cook
-в контейнере это работает иначе (Docker сам должен переподключиться
-после wake), но wall-clock детектор не помешает.
+**Rule:** wall-clock vs monotonic skew > 60s = the laptop slept.
+One retry. Logic is in arena `host_runner.py`. For cook in a
+container this works differently (Docker should reconnect after
+wake on its own), but a wall-clock detector won't hurt.
 
-## #7. Артефакты съедают диск
+## #7. Artifacts eat disk
 
-reproxy-arena: 4.3 GB за две ночи. У multicooker артефакт = только
-`cooks/<task>/`, без снапшотов раундов, лимит ниже. Но привычка
-чистить старые cook'и полезна:
+reproxy-arena: 4.3 GB in two nights. In multicooker an artifact
+= only `cooks/<task>/`, no round snapshots, the limit is lower.
+But the habit of cleaning old cooks is useful:
 
 ```bash
 find cooks/ -maxdepth 1 -type d -mtime +30 -name '[!_]*' -print
-# review → delete → пересобрать leaderboard если нужно
+# review → delete → rebuild leaderboard if needed
 ```
 
-## #8. Stagger при старте параллельных CLI
+## #8. Stagger when starting parallel CLIs
 
-Если поднять три CLI одновременно — они одновременно дёргают auth
-refresh. Keychain (для claude на хосте) или OAuth refresh-эндпоинты
-(для codex/gemini) под нагрузкой могут вернуть transient-ошибку.
+If you bring up three CLIs simultaneously — they all hit auth
+refresh at the same time. Keychain (for claude on the host) or
+OAuth refresh endpoints (for codex/gemini) under load can return
+a transient error.
 
-**Правило:** 2-секундный stagger между запусками. Унаследовано из
+**Rule:** 2-second stagger between launches. Inherited from
 `multicooker/host_runner.py:run_all`.
 
-## #9. Не пиши markdown-инструкции вместо промпта
+## #9. Don't write markdown instructions in place of a prompt
 
-Если положишь "не делай X" в `BRIEF.md` — участник прочтёт, но не
-обязательно учтёт. **Если что-то критично для оценки — это идёт в
-prompt, а не в файл.** В multicooker prompt контейнера = "Read
-/work/BRIEF.md and complete the task" + опционально hard rules.
-Hard rules дописывай в `Dockerfile.cmd` или в обёртку, не в
+If you stick "don't do X" into `BRIEF.md` — the participant will
+read it but won't necessarily honor it. **If something is
+critical for scoring — it goes into the prompt, not into a
+file.** In multicooker the container prompt = "Read
+/work/BRIEF.md and complete the task" + optionally hard rules.
+Append hard rules to `Dockerfile.cmd` or to the wrapper, not to
 `BRIEF.md`.
 
-## #10. Рубрики между BRIEF и JUDGE_BRIEF расходятся
+## #10. Rubrics drift between BRIEF and JUDGE_BRIEF
 
-Самый частый "оценки рандомные" — рубрика в `JUDGE_BRIEF.md` не
-синхрона с тем, что обещано в `BRIEF.md`. Чек: после правки одного
-открой второй и убедись, что dimensions совпадают по id, весу, и
-шкале.
+The most common "scores are random" — the rubric in
+`JUDGE_BRIEF.md` is out of sync with what's promised in
+`BRIEF.md`. Check: after editing one, open the other and make
+sure the dimensions match by id, weight, and scale.
 
-## #11. stderr участника содержит флаги его flavor
+## #11. Participant's stderr contains its flavor's fingerprints
 
-`claude` в stderr пишет "Claude is thinking..." и т.п. Если эти
-логи попадут судье — анонимизация лопнула. **Правило:** в
-`judging/_inbox/<p>/` копируем **только worktree** участника, без
-`logs/`.
+`claude` writes "Claude is thinking..." etc. to stderr. If those
+logs reach the judge — anonymization is blown. **Rule:** into
+`judging/_inbox/<p>/` we copy **only the worktree** of the
+participant, no `logs/`.

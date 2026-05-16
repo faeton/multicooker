@@ -1,44 +1,44 @@
 # multicooker — HOWTO (the long version)
 
-Подробное описание того, как multicooker работает, что она делает,
-почему именно так, и какие правила нельзя нарушать. Если ты хочешь
-просто запустить — см. [README.md](README.md). Этот файл — для
-понимания внутренностей и для расширения.
+Detailed description of how multicooker works, what it does, why it
+does it this way, and which rules you can't break. If you just want
+to run it — see [README.md](README.md). This file is for
+understanding the internals and for extending it.
 
-## Содержание
+## Contents
 
-1. [Зачем это вообще](#зачем-это-вообще)
+1. [Why this exists at all](#why-this-exists-at-all)
 2. [Mental model](#mental-model)
-3. [Структура папки `cook`](#структура-папки-cook)
-4. [Что происходит в `multicooker cook`](#что-происходит-в-multicooker-cook)
-5. [Что происходит в `multicooker judge`](#что-происходит-в-multicooker-judge)
-6. [Правила (которые легко нарушить)](#правила-которые-легко-нарушить)
-7. [Docker-mode (единственный)](#docker-mode-единственный)
-8. [Авторизация и стоимость](#авторизация-и-стоимость)
-9. [Что делать, когда что-то сломалось](#что-делать-когда-что-то-сломалось)
-10. [Расширения и следующие шаги](#расширения-и-следующие-шаги)
-11. [Уроки из reproxy/arena](#уроки-из-reproxyarena)
+3. [`cook` folder structure](#cook-folder-structure)
+4. [What happens in `multicooker cook`](#what-happens-in-multicooker-cook)
+5. [What happens in `multicooker judge`](#what-happens-in-multicooker-judge)
+6. [Rules (which are easy to break)](#rules-which-are-easy-to-break)
+7. [Docker-mode (the only one)](#docker-mode-the-only-one)
+8. [Auth and cost](#auth-and-cost)
+9. [What to do when something breaks](#what-to-do-when-something-breaks)
+10. [Extensions and next steps](#extensions-and-next-steps)
+11. [Lessons from reproxy/arena](#lessons-from-reproxyarena)
 
 ---
 
-## Зачем это вообще
+## Why this exists at all
 
-Иногда задача недоопределена настолько, что одного "правильного"
-решения не существует. Хочется посмотреть, как разные LLM
-интерпретируют её и что из этого выйдет — не столько чтобы
-"объявить победителя", сколько чтобы получить **корпус из 3+
-расходящихся решений** одной и той же задачи. Это даёт:
+Sometimes a task is so underspecified that there's no single
+"correct" solution. You want to see how different LLMs interpret it
+and what comes out — not so much to "declare a winner" as to get a
+**corpus of 3+ diverging solutions** to the same task. This gives
+you:
 
-- идеи, которые ты бы сам не придумал;
-- понимание, в чём LLM согласны, а в чём расходятся (расхождения
-  обычно подсвечивают, где задача недоопределена);
-- честный, за пределами маркетинга, sanity-check, кто из моделей
-  лучше справляется именно с твоим типом задач.
+- ideas you wouldn't have come up with yourself;
+- understanding of where LLMs agree and where they diverge
+  (divergences usually highlight where the task is underspecified);
+- an honest, beyond-marketing sanity-check of which model handles
+  your particular kind of task better.
 
-Прародитель — `reproxy/arena/` (теперь на бранче `archive/arena`),
-который гонял claude/codex/gemini в трёхраундовом турнире над
-сетевыми сценариями и из этого собрался релиз v0.1.0. Из того опыта
-выжаты уроки, описанные в конце.
+The ancestor is `reproxy/arena/` (now on branch `archive/arena`),
+which ran claude/codex/gemini in a three-round tournament over
+network scenarios and from which the v0.1.0 release was assembled.
+Lessons squeezed out of that experience are described at the end.
 
 ## Mental model
 
@@ -68,134 +68,138 @@
                  leaderboard.md
 ```
 
-Ключевые свойства:
+Key properties:
 
-1. **Параллельность.** Все участники работают одновременно (потоки на
-   хосте, или контейнеры в docker-mode). Никто никого не ждёт.
-2. **Изоляция.** Каждый видит только свою папку `work/<имя>/` плюс
-   общую `raw/` (read-only). Друг друга — нет.
-3. **Анонимизация судьи.** Судье участники приходят как `A`, `B`,
-   `C`, ... — он не знает, какая модель что написала. Маппинг
-   восстанавливается только в финальном отчёте.
-4. **Антисамосуд.** Если судья той же flavor, что и какой-то участник,
-   multicooker печатает WARN (но судит). Анонимизация уже частично
-   снимает bias; для жёсткой изоляции добавь судью третьей flavor
-   (например ещё codex-judge), которой нет среди участников.
+1. **Parallelism.** All participants run at the same time (threads
+   on the host, or containers in docker-mode). Nobody waits for
+   anyone.
+2. **Isolation.** Each one sees only its own `work/<name>/` plus a
+   shared `raw/` (read-only). They don't see each other.
+3. **Judge anonymization.** Participants reach the judge as `A`,
+   `B`, `C`, ... — it doesn't know which model wrote what. The
+   mapping is recovered only in the final report.
+4. **Anti-self-judge.** If the judge is the same flavor as one of
+   the participants, multicooker prints a WARN (but still judges).
+   Anonymization already strips some of the bias; for hard isolation
+   add a judge of a third flavor (e.g. another codex-judge) that
+   isn't among the participants.
 
-## Структура папки `cook`
+## `cook` folder structure
 
-После `multicooker new my-task`:
+After `multicooker new my-task`:
 
 ```
 cooks/my-task/
-├── BRIEF.md             # ты сюда пишешь задачу для участников
-├── brief.yaml           # участники, таймауты, рубрика
-├── JUDGE_BRIEF.md       # инструкции судье + рубрика
-├── raw/                 # ты сюда кладёшь справочники
+├── BRIEF.md             # you write the task for participants here
+├── brief.yaml           # participants, timeouts, rubric
+├── JUDGE_BRIEF.md       # judge instructions + rubric
+├── raw/                 # you drop reference materials here
 │   └── .gitkeep
-└── work/                # рабочие папки участников (создаются пустыми)
+└── work/                # participant work folders (created empty)
     ├── claude/
     ├── codex/
     └── gemini/
 ```
 
-После `multicooker cook my-task` добавляются:
+After `multicooker cook my-task` the following are added:
 
 ```
 cooks/my-task/
-├── RUN.json                          # метаданные запуска
-├── RUN_RESULT.json                   # статусы участников
-├── work/<p>/BRIEF.md                 # симлинк на ../../BRIEF.md
-├── work/<p>/raw/                     # симлинк на ../../raw
-├── work/<p>/out/                     # сюда участник пишет результат
-├── logs/<p>/<flavor>.stdout.log      # сырой stdout CLI
-└── logs/<p>/<flavor>.stderr.log      # сырой stderr CLI
+├── RUN.json                          # run metadata
+├── RUN_RESULT.json                   # participant statuses
+├── work/<p>/BRIEF.md                 # symlink to ../../BRIEF.md
+├── work/<p>/raw/                     # symlink to ../../raw
+├── work/<p>/out/                     # participant writes its result here
+├── logs/<p>/<flavor>.stdout.log      # raw CLI stdout
+└── logs/<p>/<flavor>.stderr.log      # raw CLI stderr
 ```
 
-После `multicooker judge my-task`:
+After `multicooker judge my-task`:
 
 ```
 cooks/my-task/judging/
-├── _inbox/<p>/                       # замороженная копия work/<p>/
-├── _judge_input/                     # анонимизированный вход для судей
+├── _inbox/<p>/                       # frozen copy of work/<p>/
+├── _judge_input/                     # anonymized input for the judges
 │   └── submissions/{A,B,C}/
-├── _logs/<judge-name>/               # CLI-логи судьи
+├── _logs/<judge-name>/               # judge CLI logs
 ├── _mapping.json                     # A→claude, B→codex, ...
-├── <judge-name>/scores.json          # сырые оценки (по A/B/C)
-├── <judge-name>/scores_deanon.json   # с раскрытыми именами
-└── <judge-name>/review.md            # текстовое обоснование
+├── <judge-name>/scores.json          # raw scores (by A/B/C)
+├── <judge-name>/scores_deanon.json   # with names revealed
+└── <judge-name>/review.md            # textual justification
 ```
 
-После `multicooker report my-task`:
+After `multicooker report my-task`:
 
 ```
 cooks/my-task/leaderboard.md
 ```
 
-## Что происходит в `multicooker cook`
+## What happens in `multicooker cook`
 
-Псевдокод:
+Pseudocode:
 
 ```python
 for participant in brief.participants:
-    setup work/<participant>/                 # папка + симлинк BRIEF.md + симлинк raw/
+    setup work/<participant>/                 # folder + symlink BRIEF.md + symlink raw/
     spawn thread:
         run host CLI(<flavor>) in work/<participant>/ with prompt = brief
         capture stdout/stderr to logs/<participant>/
-        on rate-limit: record evidence, return (don't sleep — другие работают)
+        on rate-limit: record evidence, return (don't sleep — others are working)
         on success/timeout: copy work/<participant>/ → judging/_inbox/<participant>/
 join all threads
 write RUN_RESULT.json
 ```
 
-Конкретные технические нюансы:
+Specific technical nuances:
 
-### Stagger при старте
-Между запуском участников 2-секундная пауза. Иначе все три CLI
-одновременно дёргают auth-refresh, и Keychain под нагрузкой может
-ответить ошибкой.
+### Startup stagger
+A 2-second pause between launching participants. Otherwise all
+three CLIs hit auth-refresh at the same time, and the Keychain
+under load can return an error.
 
 ### Rate-limit handling
-Каждый CLI имеет свои паттерны "ты упёрся в лимит" (см.
-`multicooker/runner_common.py:_RL_PATTERNS`). Если они находятся в хвосте
-stdout/stderr — участник помечается `rate_limited` со ссылкой на
-конкретную evidence-строку. **Не блокируем других** — у claude и
-gemini лимиты независимые, codex может умереть, claude и gemini
-закончат нормально.
+Each CLI has its own "you hit the limit" patterns (see
+`multicooker/runner_common.py:_RL_PATTERNS`). If they appear in the
+tail of stdout/stderr — the participant is marked `rate_limited`
+with a pointer to the specific evidence line. **We don't block the
+others** — claude and gemini have independent limits, codex may
+die, claude and gemini will finish normally.
 
 ### macOS sleep detection
-На маке `caffeinate -dimsu -w <pid>` блокирует засыпание системы пока
-CLI работает. Но если ноут на закрытой крышке — caffeinate не
-помогает. Тогда сравниваем `time.time()` (wall) и
-`time.monotonic()` (на macOS пауза при сне) и если разница > 60с —
-считаем, что ноут спал, и одну попытку повторяем (API-соединения
-почти наверняка порвались).
+On a Mac `caffeinate -dimsu -w <pid>` prevents the system from
+sleeping while the CLI is running. But if the laptop is on a closed
+lid — caffeinate doesn't help. Then we compare `time.time()` (wall)
+and `time.monotonic()` (which pauses during sleep on macOS), and
+if the difference is > 60s — we assume the laptop slept, and retry
+once (API connections almost certainly dropped).
 
-### Argv-порядок
-Один из багов arena: claude CLI имеет вариативный `--add-dir`,
-который съедает позиционный prompt как ещё один path. Поэтому
-**промпт идёт ПЕРЕД `--add-dir`**:
+### Argv ordering
+One of the arena bugs: the claude CLI has a variadic `--add-dir`,
+which swallows the positional prompt as another path. So the
+**prompt goes BEFORE `--add-dir`**:
 
 ```bash
 claude --print "<prompt>" --add-dir /work
 ```
 
-а не
+and not
 
 ```bash
-claude --add-dir /work --print "<prompt>"   # ←  prompt теряется
+claude --add-dir /work --print "<prompt>"   # ←  prompt gets lost
 ```
 
-Это запечено в `templates/cook/participants/claude/entrypoint.sh` —
-канонический порядок argv per flavor см. в `docs/orchestration.md`.
+This is baked into
+`templates/cook/participants/claude/entrypoint.sh` — for the
+canonical argv order per flavor see `docs/orchestration.md`.
 
-### Выходной "контракт"
-Участник должен положить результат под `./out/`. Это конвенция,
-прописанная в шаблонном промпте. Судья смотрит туда же.
-Если участник проигнорировал и накидал файлы в корень — судья всё
-равно их увидит (он видит весь worktree, кроме симлинков).
+### Output "contract"
+The participant must put its result under `./out/`. This is a
+convention spelled out in the template prompt. The judge looks
+there too. If a participant ignored it and dumped files at the
+root — the judge will see them anyway (it sees the whole worktree
+except symlinks).
 
-## Что происходит в `multicooker judge`
+## What happens in `multicooker judge`
 
 ```python
 participants = brief.participants
@@ -210,253 +214,256 @@ for judge in brief.judges:
     write deanon to judging/<judge-name>/scores_deanon.json
 ```
 
-### Почему симлинки в judge work-dir — нельзя
-Главный баг arena #1: судья получал `./inbox` и `./outbox` симлинками
-на реальные папки. CLI-сэндбоксы (`claude --add-dir <work>`)
-разрешают чтение/запись только внутри своего work-dir. Симлинк
-ведущий наружу — резолвится в путь, который не в allowlist, и
-Read/Bash/Write **тихо** отказывают. В итоге 97% оценок были
-плейсхолдерами.
+### Why symlinks in the judge work-dir are forbidden
+Arena bug #1: the judge received `./inbox` and `./outbox` as
+symlinks to the real folders. CLI sandboxes (`claude --add-dir
+<work>`) allow reads/writes only inside their own work-dir. A
+symlink pointing outside resolves to a path that isn't in the
+allowlist, and Read/Bash/Write **silently** refuse. The result:
+97% of scores were placeholders.
 
-Решение: **никаких симлинков**. JUDGE_BRIEF.md, raw/, submissions/
-**копируются** в work-dir судьи (не симлинкаются). После прогона
-содержимое `work/outbox/` копируется обратно в
+The fix: **no symlinks**. JUDGE_BRIEF.md, raw/, submissions/ are
+**copied** into the judge's work-dir (not symlinked). After the
+run the contents of `work/outbox/` are copied back into
 `judging/<judge-name>/`.
 
-### Почему анонимизация важна
-Если судья видит "submission claude/" — claude-судья будет
-склоняться оценивать "своего" выше (или, наоборот, занижать,
-пытаясь компенсировать). Анонимизация вместе с anti-self-judge
-правилом убирают самые грубые источники предвзятости.
+### Why anonymization matters
+If the judge sees "submission claude/" — the claude-judge will tend
+to score "its own" higher (or the opposite, lowballing to
+compensate). Anonymization plus the anti-self-judge rule remove the
+crudest sources of bias.
 
-Стоит понимать: **полностью предвзятость не убирается**. Стиль кода
-у claude vs gemini узнаваем. Если хочешь сильнее — добавь третьего
-судью (любой anti-bias выигрывает от большего N), и/или попроси
-agent-обёртку перефразировать выходы перед судом (не реализовано в
-v0.1, в TODO).
+Be aware: **bias is not fully removed**. claude vs gemini code
+style is recognizable. If you want more — add a third judge (any
+anti-bias measure benefits from larger N), and/or ask an agent
+wrapper to paraphrase outputs before judging (not implemented in
+v0.1, on the TODO list).
 
-## Правила (которые легко нарушить)
+## Rules (which are easy to break)
 
-1. **Не давай судье читать stderr.log участника.** В stderr CLI
-   часто кладёт что-то вроде "Claude is thinking..." — мгновенный
-   деанон. У нас в judging/_inbox/ кладётся **только work-tree
-   участника**, без logs/.
+1. **Don't let the judge read the participant's stderr.log.** In
+   stderr the CLI often puts something like "Claude is thinking..."
+   — instant deanon. We put **only the participant's work-tree**
+   into judging/_inbox/, without logs/.
 
-2. **JUDGE_BRIEF.md и BRIEF.md должны иметь одинаковую рубрику.**
-   Если ты добавишь измерение в BRIEF.md и забудешь про
-   JUDGE_BRIEF.md, судья будет оценивать не то, что обещал брифу.
+2. **JUDGE_BRIEF.md and BRIEF.md must share the same rubric.** If
+   you add a dimension to BRIEF.md and forget JUDGE_BRIEF.md, the
+   judge will score something other than what was promised in the
+   brief.
 
-3. **Не редактируй work/<p>/ после cook.** Если хочешь "помочь"
-   участнику — это уже не его результат. Если хочешь дать всем
-   подсказку — обнови BRIEF.md или raw/, и cook заново.
+3. **Don't edit work/<p>/ after cook.** If you want to "help" a
+   participant — that's not its result anymore. If you want to give
+   everyone a hint — update BRIEF.md or raw/ and cook again.
 
-4. **raw/ — read-only по соглашению.** Технически файловая система
-   позволяет участнику туда писать (мы используем симлинк). Не
-   доверяй: если задача чувствительная, после cook сделай
-   `diff -r raw/ <expected>/` и убедись, что участник её не
-   изменил. Или установи на raw/ chmod 555 перед cook.
+4. **raw/ — read-only by convention.** Technically the filesystem
+   lets the participant write there (we use a symlink). Don't trust
+   it: if the task is sensitive, after cook do
+   `diff -r raw/ <expected>/` and confirm the participant didn't
+   change it. Or chmod 555 raw/ before cook.
 
-5. **API-лимиты непредсказуемы.** Не запускай overnight cook без
-   `RUN_RESULT.json` поста-обработки. Утром проверь: были ли
-   `rate_limited` участники? Если да, и они тебе важны — резерв
-   на резапуск (не реализован в v0.1: запускай руками после
-   восстановления квоты).
+5. **API limits are unpredictable.** Don't run an overnight cook
+   without `RUN_RESULT.json` post-processing. In the morning check:
+   were any participants `rate_limited`? If yes, and they matter to
+   you — plan a re-run (not implemented in v0.1: run manually after
+   quota recovery).
 
-## Docker-mode (единственный)
+## Docker-mode (the only one)
 
-Начиная с v0.2 multicooker работает только в docker-mode. Host-mode
-и `host_runner.py` удалены — если что-то ломалось без них, чинится
-в docker-mode.
+Starting from v0.2 multicooker only runs in docker-mode. Host-mode
+and `host_runner.py` have been removed — if something broke without
+them, fix it in docker-mode.
 
-- Каждый участник и каждый судья — собственный контейнер на
-  собственной bridge-сети (`net-participant-<name>` /
-  `net-judge-<name>`). Inter-container DNS/IP-видимости в одном
-  cook'е нет.
-- Egress в интернет открыт. Sandbox — это контейнер, не сеть.
-  Если конкретный cook требует жёсткий allowlist — кладёшь
-  локальный `compose.override.yaml`.
-- Подписочные креды (Claude Pro / ChatGPT Plus / Gemini Advanced)
-  снапшотятся в `cooks/<task>/.auth/<flavor>/` (mode `0600`,
-  `.gitignore`) и bind-mount'ятся RO в соответствующий контейнер.
-  **API-ключей не нужно**, и silent-fallback на API-ключ не
-  предусмотрен. См. `docs/auth.md`.
-- Permission-bypass флаги (`--dangerously-skip-permissions`,
-  `--yolo`, `--dangerously-bypass-approvals-and-sandbox`) внутри
-  контейнера обязательны: без них CLI зависают на
-  approval-промптах. Безопасны, потому что контейнер их сдерживает.
-- Shared base images (`mc-base-<flavor>:latest`) ставят тяжёлое
-  (`npm i -g <cli>`), а cook-Dockerfile укорочен до
-  `FROM mc-base-<flavor>` + entrypoint. Build cook-образа ~1 сек
-  вместо 2-3 мин. `multicooker build-base` собирает руками; cook /
-  refine / judge сами зовут `base_images.ensure_built()`, поэтому
-  для пользователя это прозрачно.
+- Each participant and each judge — its own container on its own
+  bridge network (`net-participant-<name>` / `net-judge-<name>`).
+  No inter-container DNS/IP visibility within a cook.
+- Egress to the internet is open. The sandbox is the container,
+  not the network. If a particular cook needs a strict allowlist —
+  drop in a local `compose.override.yaml`.
+- Subscription credentials (Claude Pro / ChatGPT Plus / Gemini
+  Advanced) are snapshotted into `cooks/<task>/.auth/<flavor>/`
+  (mode `0600`, `.gitignore`) and bind-mounted RO into the
+  corresponding container. **API keys are not needed**, and there
+  is no silent fallback to an API key. See `docs/auth.md`.
+- Permission-bypass flags (`--dangerously-skip-permissions`,
+  `--yolo`, `--dangerously-bypass-approvals-and-sandbox`) are
+  mandatory inside the container: without them the CLIs hang on
+  approval prompts. Safe, because the container contains them.
+- Shared base images (`mc-base-<flavor>:latest`) install the heavy
+  stuff (`npm i -g <cli>`), and the cook Dockerfile is shortened
+  to `FROM mc-base-<flavor>` + entrypoint. Cook image build is
+  ~1 sec instead of 2-3 min. `multicooker build-base` builds them
+  manually; cook / refine / judge call `base_images.ensure_built()`
+  themselves, so it's transparent to the user.
 
-Threat model и что именно защищает контейнер: см.
+Threat model and what exactly the container protects: see
 [`docs/security.md`](docs/security.md).
 
-## Авторизация и стоимость
+## Auth and cost
 
-### Подписки
-- Только подписочная авторизация: Claude Pro $20/м, ChatGPT Plus
-  $20/м, Gemini Advanced $20/м. Достаточно для нескольких задач в
-  день; лимиты низкие — типичный cook на 3 участника гоняет
-  ≈ 30k–200k токенов на каждого.
-- API-ключи не используются и **не подключаются как fallback**: если
-  подписочный creds недоступен, `multicooker doctor` / `cook` падают
-  явно с remediation-сообщением, а не уходят молча на платный API.
+### Subscriptions
+- Subscription-only auth: Claude Pro $20/mo, ChatGPT Plus $20/mo,
+  Gemini Advanced $20/mo. Enough for several tasks a day; limits
+  are low — a typical cook with 3 participants burns ≈ 30k–200k
+  tokens per participant.
+- API keys are not used and **not wired in as a fallback**: if a
+  subscription cred is unavailable, `multicooker doctor` / `cook`
+  fail loudly with a remediation message, rather than silently
+  falling back to a paid API.
 
-### Бюджет на cook
-Рассчитывается грубо:
+### Cook budget
+Rough estimate:
 
 ```
-участники × токены_на_участника × $/токен
-+ судьи × токены_на_судью × $/токен
+participants × tokens_per_participant × $/token
++ judges × tokens_per_judge × $/token
 ```
 
-Для типичной "напиши эссе на 2 страницы" задачи: ~$0.30–$1.50.
-Для "перепиши вот этот репозиторий": ~$5–$30 (зависит от размера).
+For a typical "write a 2-page essay" task: ~$0.30–$1.50. For
+"rewrite this repository": ~$5–$30 (depends on size).
 
-В v0.1 нет cost-tracker. Если нужно — смотри prompt+completion
-в логах подписочного CLI или в API-ledger. В v0.2 хочется
-автоматический ledger (одна из TODO).
+v0.1 has no cost-tracker. If you need one — look at
+prompt+completion in the subscription CLI logs or in the API
+ledger. v0.2 wants an automatic ledger (one of the TODOs).
 
-## Что делать, когда что-то сломалось
+## What to do when something breaks
 
 ### "claude CLI not in PATH"
 ```
-brew install claude-code     # или официальный установщик anthropic
+brew install claude-code     # or the official anthropic installer
 ```
-Аналогично `codex` и `gemini`. Если не нужен какой-то участник —
-удали его из `brief.yaml` перед cook.
+Same for `codex` and `gemini`. If you don't need a particular
+participant — remove it from `brief.yaml` before cook.
 
-### "судья не написал scores.json"
-Смотри `cooks/<name>/judging/_logs/<judge>/<flavor>.stdout.log`.
-Самое частое:
-- судья сам уперся в rate-limit;
-- судья счёл задачу слишком ambiguous и попросил уточнений
-  (читается в его выводе);
-- судья наткнулся на симлинк-баг (не должно случаться с этой
-  версией судьи — мы копируем, не симлинкуем).
+### "the judge didn't write scores.json"
+Look at `cooks/<name>/judging/_logs/<judge>/<flavor>.stdout.log`.
+Most common cases:
+- the judge hit its own rate-limit;
+- the judge considered the task too ambiguous and asked for
+  clarification (visible in its output);
+- the judge tripped over the symlink bug (shouldn't happen with
+  this version of the judge — we copy, we don't symlink).
 
-### "оценки выглядят случайными"
-Чаще всего рубрика непонятна судье. Перечитай свой
-`JUDGE_BRIEF.md` глазами незаинтересованного человека. Если в
-дименшнах прописано "quality" без определения — судья ставит
-наугад. Чем конкретнее формулировка ("did the answer reference
-all 3 source documents?"), тем стабильнее оценки.
+### "scores look random"
+Most often the rubric is unclear to the judge. Re-read your
+`JUDGE_BRIEF.md` with the eyes of a disinterested person. If a
+dimension says "quality" without a definition — the judge scores
+at random. The more concrete the phrasing ("did the answer
+reference all 3 source documents?"), the more stable the scores.
 
-### "claude занял всё CPU"
-Каждый CLI многопоточный сам по себе. Три параллельных claude'а
-могут забить ноут. Снизь параллелизм:
+### "claude ate all the CPU"
+Each CLI is multi-threaded on its own. Three parallel claudes can
+saturate a laptop. Lower parallelism:
 ```yaml
 participants:
   - name: claude
     flavor: claude
-  # codex и gemini закомментированы; запусти в две очереди
+  # codex and gemini commented out; run in two passes
 ```
-В v0.2 хочется флаг `--max-parallel N`.
+v0.2 wants a `--max-parallel N` flag.
 
-## Refine: round N+1 поверх предыдущего результата
+## Refine: round N+1 on top of the previous result
 
-Не каждая задача решается в один раунд. `multicooker refine <task>`
-прогоняет ещё один раунд поверх предыдущего output'а:
+Not every task gets solved in one round. `multicooker refine
+<task>` runs another round on top of the previous output:
 
-- Каждый участник видит свой прошлый `./out/` **на месте, RW** —
-  редактирует/заменяет/расширяет.
-- Перед запуском прошлый раунд снапшотится в `rounds/<N>/<p>/`
-  (immutable history), плюс sealed `judging/_inbox/` копируется в
-  `rounds/<N>/_inbox/`.
-- Inline в `PROMPT.txt` подставляются:
-  - **shared feedback** из `cooks/<task>/FEEDBACK.md` (общий
-    review для всех);
-  - **personal feedback** из `cooks/<task>/FEEDBACK_<flavor>.md`
-    (опционально, адресовано конкретному участнику).
-- `--participants <list>` позволяет refine'ить подмножество.
-- `--feedback <path>` подменяет источник shared feedback'а на
-  произвольный файл — удобно, когда один фидбек применяется к
-  нескольким cook'ам.
-- `multicooker diff <task> N M` показывает unified diff между
-  раундами по каждому участнику — sanity-check, что refine реально
-  что-то поменял.
+- Each participant sees its previous `./out/` **in place, RW** —
+  edits/replaces/extends it.
+- Before the run, the previous round is snapshotted into
+  `rounds/<N>/<p>/` (immutable history), plus the sealed
+  `judging/_inbox/` is copied into `rounds/<N>/_inbox/`.
+- Inlined into `PROMPT.txt` are:
+  - **shared feedback** from `cooks/<task>/FEEDBACK.md` (a common
+    review for everyone);
+  - **personal feedback** from `cooks/<task>/FEEDBACK_<flavor>.md`
+    (optional, addressed to a specific participant).
+- `--participants <list>` lets you refine a subset.
+- `--feedback <path>` swaps the source of shared feedback for an
+  arbitrary file — handy when one piece of feedback applies to
+  several cooks.
+- `multicooker diff <task> N M` shows a unified diff between
+  rounds per participant — a sanity-check that refine actually
+  changed something.
 
-Артефакты раунда: `REFINE_<N>.json` (метаданные старта),
+Round artifacts: `REFINE_<N>.json` (start metadata),
 `REFINE_<N>_RESULT.json` (status + duration + rate-limit info per
-participant). Полный lifecycle артефактов — в
+participant). The full artifact lifecycle is in
 [`docs/lifecycle.md`](docs/lifecycle.md).
 
-После refine ожидаем тот же шаг judging'а:
+After refine, the same judging step is expected:
 `multicooker judge <task>` → `multicooker report <task>`.
 
 ### `multicooker rejudge <task>`
 
-Отдельная команда: пере-судить **тот же** snapshot без повторного
-cook'а. Полезно когда правил `JUDGE_BRIEF.md` (рубрика, веса) или
-вручную поправил `out/<p>/RESULT.md`. Делает три вещи:
+A separate command: re-judge **the same** snapshot without a
+re-cook. Useful when you've edited `JUDGE_BRIEF.md` (rubric,
+weights) or manually patched `out/<p>/RESULT.md`. It does three
+things:
 
-1. Пере-сильит `judging/_inbox/<p>/` из текущего `work/<p>/out/`
-   (важно — обычный `judge` использует уже сильнутый inbox и
-   правки в `out/` пропустит).
-2. Чистит `judging/<judge>/` outbox'ы прошлых судей.
-3. Зовёт обычный `judge` flow (фрэшная анонимизация — `_mapping.json`
-   всегда пере-генерится, anti-bias guarantee не ослабляем).
+1. Re-seals `judging/_inbox/<p>/` from the current `work/<p>/out/`
+   (important — a regular `judge` uses the already-sealed inbox
+   and will miss edits to `out/`).
+2. Cleans previous judges' outboxes in `judging/<judge>/`.
+3. Calls the regular `judge` flow (fresh anonymization —
+   `_mapping.json` is always regenerated, the anti-bias guarantee
+   is not weakened).
 
-Параметры: `--judges` (как у `judge`).
+Parameters: `--judges` (same as `judge`).
 
-Каждый запуск участника также пишет `work/<p>/trace.json` с
-`{prompt, model, exit_code, duration_s, started_at, status}` —
-дешёвый структурированный артефакт для debugging'а и для будущих
-replay-сценариев. Полная structured-trace версия (tool calls)
-отложена — см. `docs/design-notes.md`.
+Each participant run also writes `work/<p>/trace.json` with
+`{prompt, model, exit_code, duration_s, started_at, status}` — a
+cheap structured artifact for debugging and for future replay
+scenarios. A full structured-trace version (tool calls) is
+deferred — see `docs/design-notes.md`.
 
-## Расширения и следующие шаги
+## Extensions and next steps
 
-Что осталось в TODO (см. `docs/todo.md` для актуального списка):
+What's left on the TODO list (see `docs/todo.md` for the current
+list):
 
-1. **Cost ledger** — на каждый запуск парсим usage из CLI и пишем
-   `cook/cost_ledger.json`.
-2. **Resume** — `multicooker resume <name>` повторяет только
-   `rate_limited` или `error` участников, не трогая `ok`.
-3. **Per-participant timeout** (сейчас глобальный `timeout_s`).
-4. **`multicooker diff <task> N M`** — сравнение раундов.
-5. **Replayable traces / registry** — структурированный run trace,
-   versioned task specs (идеи из agentevals / OpenAI Evals).
-6. **Web report** — `multicooker serve <name>` показывает HTML с
-   diff-ами между submissions, judging logs, leaderboard'ом.
-7. **Cross-cook leaderboard** — глобальная таблица "claude
-   выигрывает в 7 из 10 задач, codex в 2, gemini в 1".
+1. **Cost ledger** — on every run, parse usage from the CLI and
+   write `cook/cost_ledger.json`.
+2. **Resume** — `multicooker resume <name>` re-runs only
+   `rate_limited` or `error` participants, leaving `ok` alone.
+3. **Per-participant timeout** (currently a global `timeout_s`).
+4. **`multicooker diff <task> N M`** — round comparison.
+5. **Replayable traces / registry** — structured run trace,
+   versioned task specs (ideas from agentevals / OpenAI Evals).
+6. **Web report** — `multicooker serve <name>` shows HTML with
+   diffs between submissions, judging logs, and the leaderboard.
+7. **Cross-cook leaderboard** — global table "claude wins 7 out
+   of 10 tasks, codex 2, gemini 1".
 
-## Уроки из reproxy/arena
+## Lessons from reproxy/arena
 
-Что overnight runs научили нас не делать:
+What overnight runs taught us not to do:
 
-- **Variadic CLI flags ВСЕГДА съедают позиционные args.** `claude`
-  с `--add-dir <wt>` после prompt-а оставляет prompt висеть на
-  stdin → 0 байт diff → "0/100 на correctness". Решение: prompt
-  ПЕРЕД переменными флагами.
-- **Symlinks внутрь sandbox-allowlist'а.** Не работают. CLI видит
-  путь, который резолвится наружу, тихо отказывает, никаких
-  ошибок — только пустой outbox. Решение: никогда не симлинкуем
-  в work-dir, который мы передаём в CLI с `--add-dir`. Только
-  copy.
-- **Codex quota перерасход.** OpenAI ChatGPT Plus квота раз в
-  ~5 часов кончалась посреди раунда → один из трёх "обнулялся".
-  Решение: смириться (нельзя обойти) и в orchestrator-е сделать
-  per-participant deferred-retry, чтобы остальные не блокировались.
-- **Не доверять exit-code.** Многие CLI возвращают 0 даже когда
-  упёрлись в лимит, потому что они "успешно сообщили о лимите".
-  Решение: всегда парсить stderr на known-bad patterns.
-- **Не пишите markdown-handover для CLI, ожидая что он его
-  прочтёт.** Прочтёт. Но не учтёт. Если хочешь, чтобы участник
-  изменил поведение — пиши это в **prompt**, не в файл.
-- **Sleep mid-run на маке.** Connection drops к Anthropic API ←
-  закрытая крышка. caffeinate не всегда помогает. Решение —
-  retroactive detection через wall-vs-monotonic skew + одна
-  попытка retry.
-- **Не верь leaderboard'у первого запуска.** Reproxy-arena
-  overnight #1 показал gemini > codex > claude. После починки
-  argv-бага и judge-симлинков порядок изменился. Только после
-  смоук-теста и второго прогона цифры были осмысленными.
-- **Артефакты съедают диск быстро.** Reproxy-arena: 4.3 ГБ за два
-  overnight'а. В multicooker артефакт = только `cook/<name>/`,
-  без снапшотов раундов; лимит низкий, но привычка очищать
-  старые cooks полезна.
+- **Variadic CLI flags ALWAYS swallow positional args.** `claude`
+  with `--add-dir <wt>` after the prompt leaves the prompt hanging
+  on stdin → 0-byte diff → "0/100 on correctness". Fix: prompt
+  BEFORE variadic flags.
+- **Symlinks inside the sandbox allowlist.** Don't work. The CLI
+  sees a path that resolves outward, silently refuses, no errors —
+  just an empty outbox. Fix: never symlink into a work-dir we hand
+  to the CLI with `--add-dir`. Only copy.
+- **Codex quota overruns.** OpenAI ChatGPT Plus quota ran out
+  every ~5 hours mid-round → one of the three "zeroed out". Fix:
+  accept it (can't be worked around) and in the orchestrator do a
+  per-participant deferred-retry so the others aren't blocked.
+- **Don't trust the exit code.** Many CLIs return 0 even when they
+  hit a limit, because they "successfully reported the limit".
+  Fix: always parse stderr for known-bad patterns.
+- **Don't write markdown handovers for the CLI expecting it to
+  read them.** It will read. But it won't act on it. If you want
+  the participant to change behavior — put it in the **prompt**,
+  not in a file.
+- **Mid-run sleep on a Mac.** Connection drops to the Anthropic
+  API ← closed lid. caffeinate doesn't always help. Fix —
+  retroactive detection via wall-vs-monotonic skew + one retry.
+- **Don't trust the leaderboard from the first run.** Reproxy-arena
+  overnight #1 showed gemini > codex > claude. After fixing the
+  argv bug and the judge symlinks, the order changed. Only after a
+  smoke test and a second run were the numbers meaningful.
+- **Artifacts eat disk fast.** Reproxy-arena: 4.3 GB over two
+  overnights. In multicooker the artifact = only `cook/<name>/`,
+  no round snapshots; the cap is low, but the habit of cleaning up
+  old cooks is useful.

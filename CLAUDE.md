@@ -1,45 +1,46 @@
-# multicooker — для Клода
+# multicooker — notes for Claude
 
-multicooker — это арена для LLM: одна задача, несколько участников
-(`claude` / `codex` / `gemini`) параллельно решают её **каждый в
-своём docker-контейнере** с подписочной авторизацией, потом судьи
-(тоже LLM в контейнерах) сравнивают и выставляют оценки.
-Архитектура унаследована из `~/Sites/reproxy/arena/` (бранч
-`archive/arena`) — compose-оркестрация, anti-self-judge,
-анонимизация, rate-limit handling.
+multicooker is an arena for LLMs: one task, several participants
+(`claude` / `codex` / `gemini`) solve it in parallel **each in its
+own docker container** with subscription auth, then judges (also
+LLMs in containers) compare and score the results. The architecture
+is inherited from `~/Sites/reproxy/arena/` (branch `archive/arena`)
+— compose orchestration, anti-self-judge, anonymization, rate-limit
+handling.
 
-## Главное правило (HARD)
+## Hard rules
 
-1. **Всё в docker.** Это не "будущая миграция" — это спец-дизайн:
-   контейнер сам по себе является OS-level sandbox'ом, и именно
-   поэтому участники запускаются с **dangerously-skip / bypass /
-   yolo** флагами. Без них CLI в non-interactive режиме зависают
-   на approval-промптах. Внутри изолированного контейнера эти
-   флаги безопасны — host'у они навредить не могут.
-2. **Никаких API-ключей.** Подписочные креды (`Claude Pro`,
-   `ChatGPT Plus`, `Gemini Advanced`) пробрасываются в контейнер
-   из хоста: bind-mount файлов для codex/gemini, named volume с
-   one-time `claude /login` для claude. См. `docs/auth.md`.
-3. **Новая задача = новая папка `cooks/<имя>/`** через
-   `multicooker new <имя>` — копирует скелет из `templates/cook/`.
-   Имя автоматически префиксится сегодняшней датой:
-   `multicooker new foo` → `cooks/260509-foo/` (если уже передан
-   префикс `YYMMDD-`, он не дублируется). Дальше во всех командах
-   используется полное имя с датой: `multicooker cook 260509-foo`.
-   Никогда не правь чужие cooks и не клади артефакты вне
-   `cooks/<имя>/`.
-4. **Параллельность.** Все участники стартуют одновременно
-   (с 2-сек stagger'ом для auth refresh), независимо друг от
-   друга. Rate-limit одного — не блокирует других.
+1. **Everything in docker.** This is not "a future migration" — it's
+   the design: the container is itself an OS-level sandbox, and
+   that's exactly why participants are launched with
+   **dangerously-skip / bypass / yolo** flags. Without them the CLIs
+   hang on approval prompts in non-interactive mode. Inside the
+   isolated container those flags are safe — they can't reach the
+   host.
+2. **No API keys.** Subscription credentials (`Claude Pro`,
+   `ChatGPT Plus`, `Gemini Advanced`) are passed into the container
+   from the host: bind-mount files for codex/gemini, a named volume
+   with one-time `claude /login` for claude. See `docs/auth.md`.
+3. **New task = new folder `cooks/<name>/`** via
+   `multicooker new <name>` — copies the skeleton from
+   `templates/cook/`. The name is auto-prefixed with today's date:
+   `multicooker new foo` → `cooks/260509-foo/` (if a `YYMMDD-`
+   prefix is already there, it's not duplicated). All subsequent
+   commands use the full name with the date: `multicooker cook
+   260509-foo`. Never edit someone else's cooks, never write
+   artifacts outside `cooks/<name>/`.
+4. **Parallelism.** All participants start at the same time (with a
+   2-second stagger for auth refresh), independently of each other.
+   One being rate-limited doesn't block the others.
 
-## Permission-флаги в контейнерах (важно)
+## Permission flags in containers (important)
 
-Эталонные argv по каждой flavor (см.
-`reproxy/arena/coding-sandbox/host_runner.py` для канонического
-порядка — нарушение порядка ломает CLI):
+Canonical argv per flavor (see
+`reproxy/arena/coding-sandbox/host_runner.py` for the canonical
+ordering — getting the order wrong breaks the CLI):
 
 ```bash
-# claude  (промпт ВСЕГДА перед --add-dir, иначе variadic --add-dir съест его)
+# claude  (prompt ALWAYS before --add-dir, otherwise the variadic --add-dir eats it)
 claude --print "<prompt>" --dangerously-skip-permissions --add-dir /work
 
 # codex
@@ -50,85 +51,87 @@ codex exec --cd /work --skip-git-repo-check \
 gemini --yolo -p "<prompt>"
 ```
 
-Эти dangerous-флаги — **сознательное и обязательное** условие, а
-не workaround. Они гарантируют, что:
+These dangerous flags are a **deliberate and mandatory** condition,
+not a workaround. They guarantee:
 
-- участник не зависнет на "may I write to ./out/RESULT.md? [y/N]";
-- но при этом он не сможет дотянуться до хоста, потому что
-  контейнер — это и есть его sandbox.
+- the participant won't hang on "may I write to ./out/RESULT.md? [y/N]";
+- but at the same time it can't reach the host, because the
+  container *is* the sandbox.
 
-Сетевая изоляция между контейнерами: каждый участник и каждый
-судья — на собственной bridge-сети (`net-participant-<name>` /
-`net-judge-<name>`). Контейнеры одного cook'а не видят друг друга
-по DNS/IP, поэтому участник не может подсмотреть чужой `out/`.
-Egress в интернет открыт: участники легитимно ходят за npm/pypi/
-docs/github для решения задачи. Sandbox обеспечивает контейнер,
-не сеть.
+Network isolation between containers: each participant and each
+judge is on its own bridge network (`net-participant-<name>` /
+`net-judge-<name>`). Containers in the same cook don't see each
+other via DNS/IP, so a participant can't peek at another's `out/`.
+Egress to the internet is open: participants legitimately reach
+out to npm/pypi/docs/github to solve the task. The container is
+the sandbox, not the network.
 
-## Канонический поток
+## Canonical flow
 
 ```bash
-multicooker new <task>                 # → cooks/<task>/ из templates/cook/
-$EDITOR cooks/<task>/BRIEF.md         # ЧТО участники должны сделать
-$EDITOR cooks/<task>/brief.yaml       # КТО, таймауты, рубрика
-$EDITOR cooks/<task>/JUDGE_BRIEF.md   # КАК судить (рубрика == brief.yaml)
-cp <refs>... cooks/<task>/raw/        # справочники (RO mount)
+multicooker new <task>                 # → cooks/<task>/ from templates/cook/
+$EDITOR cooks/<task>/BRIEF.md          # WHAT participants must do
+$EDITOR cooks/<task>/brief.yaml        # WHO, timeouts, rubric
+$EDITOR cooks/<task>/JUDGE_BRIEF.md    # HOW to judge (rubric == brief.yaml)
+cp <refs>... cooks/<task>/raw/         # references (RO mount)
 
-multicooker cook   <task>              # параллельный запуск в контейнерах
-multicooker judge  <task>              # анонимизированное судейство в контейнерах
+multicooker cook   <task>              # parallel run in containers
+multicooker judge  <task>              # anonymized judging in containers
 multicooker report <task>              # → cooks/<task>/leaderboard.md
 ```
 
-## Когда тебя просят «сделай новую арену под X»
+## When asked to "make a new arena for X"
 
 1. `multicooker new <task>`.
-2. Перепиши `BRIEF.md`: цель, входы (придут в `/work/raw/` RO),
-   что должно лежать в `/work/out/`, success criteria.
-   Двусмысленность в постановке — ок (на ней расходятся участники),
-   в success criteria — нет.
-3. Синхронизируй рубрику между `brief.yaml` (`rubric.dimensions`) и
-   `JUDGE_BRIEF.md` (таблица + JSON-схема `scores.json`).
-4. Материалы — в `raw/`.
-5. Если задача требует кастомных тулов в контейнере (`tshark`,
-   `pandas`, компилятор Go) — добавляй их в Dockerfile **этого
-   cook**, не в шаблон. Cook'и независимы.
+2. Rewrite `BRIEF.md`: goal, inputs (will arrive in `/work/raw/`
+   RO), what must be in `/work/out/`, success criteria.
+   Ambiguity in the problem statement — ok (that's where
+   participants diverge); ambiguity in the success criteria — not
+   ok.
+3. Keep the rubric in sync between `brief.yaml`
+   (`rubric.dimensions`) and `JUDGE_BRIEF.md` (the table + JSON
+   schema for `scores.json`).
+4. Reference materials → `raw/`.
+5. If the task needs custom tools in the container (`tshark`,
+   `pandas`, a Go compiler) — add them to the Dockerfile of **this
+   cook**, not the template. Cooks are independent.
 6. `multicooker cook <task>` → `judge` → `report`.
 
-Перед overnight — глянь `docs/pitfalls.md`.
+Before an overnight run — skim `docs/pitfalls.md`.
 
-## Изоляция (как в reproxy/arena)
+## Isolation (as in reproxy/arena)
 
-- Каждый участник — свой контейнер на собственной bridge-сети
-  `net-participant-<name>`. Видит: `/work/BRIEF.md` (RO),
-  `/work/raw/` (RO), `/work/out/` (RW), свои creds. **Не видит**:
-  других участников (они в других сетях), `judging/`, маппинг
-  `A↔flavor`, остальной репо.
-- Egress в интернет открыт. Это сознательно: участникам нужен
-  доступ к LLM API + npm/pypi/github/docs. Sandbox-гарантия —
-  контейнер, а не сеть. Если конкретный cook требует жёсткого
-  allowlist'а, это делается локальным `compose.override.yaml`.
-- Судья — отдельный контейнер на своей `net-judge-<name>`,
-  доступа к участникам нет. Получает **копии** (не симлинки) `BRIEF.md` /
-  `JUDGE_BRIEF.md` / `raw/` / анонимизированных
-  `submissions/{A,B,C}/`. Симлинки внутрь sandbox-allowlist'а CLI
-  не работают — баг #1 из reproxy/arena.
-- `_mapping.json` (A→claude, B→codex, ...) живёт **только** на
-  хосте, в контейнеры не прокидывается.
+- Each participant — its own container on its own bridge network
+  `net-participant-<name>`. Sees: `/work/BRIEF.md` (RO),
+  `/work/raw/` (RO), `/work/out/` (RW), its own creds. **Doesn't
+  see**: other participants (they're on other networks),
+  `judging/`, the `A↔flavor` mapping, the rest of the repo.
+- Egress to the internet is open. Deliberate: participants need
+  access to LLM API + npm/pypi/github/docs. Sandbox guarantee is
+  the container, not the network. If a specific cook needs a hard
+  allowlist, do it via a local `compose.override.yaml`.
+- Judge — a separate container on its own `net-judge-<name>`, no
+  access to participants. Receives **copies** (not symlinks) of
+  `BRIEF.md` / `JUDGE_BRIEF.md` / `raw/` / the anonymized
+  `submissions/{A,B,C}/`. Symlinks into the CLI's sandbox
+  allowlist don't work — bug #1 from reproxy/arena.
+- `_mapping.json` (A→claude, B→codex, ...) lives **only** on the
+  host, never goes into containers.
 
-Детали — `docs/orchestration.md`.
+Details — `docs/orchestration.md`.
 
-## Дальше — детали
+## Further reading
 
-- `README.md` — TL;DR для пользователя.
-- `HOWTO.md` — длинное описание механики и lessons learned. Там
-  ещё всплывает host-mode (легаси v0.1 фоллбек) — игнорируй,
-  целевой режим docker.
-- `docs/setup-new-cook.md` — пошагово: как сделать новый cook.
-- `docs/orchestration.md` — compose-устройство, сети, mounts,
-  argv per flavor, что в каком контейнере крутится.
-- `docs/auth.md` — подписочная авторизация в контейнерах без
-  API-ключей.
-- `docs/pitfalls.md` — грабли из reproxy/arena.
-- `docs/implementation-status.md` — что уже работает в коде, что
-  нужно дописать (если `multicooker cook --docker` сейчас падает с
-  "not implemented" — это сюда).
+- `README.md` — TL;DR for the user.
+- `HOWTO.md` — long description of mechanics and lessons learned.
+  Still mentions host-mode (legacy v0.1 fallback) — ignore that,
+  the target mode is docker.
+- `docs/setup-new-cook.md` — step by step: how to make a new cook.
+- `docs/orchestration.md` — compose layout, networks, mounts, argv
+  per flavor, what runs in which container.
+- `docs/auth.md` — subscription-based auth in containers without
+  API keys.
+- `docs/pitfalls.md` — gotchas inherited from reproxy/arena.
+- `docs/implementation-status.md` — what already works in code,
+  what still needs to be written (if `multicooker cook --docker`
+  is failing with "not implemented" — this is the place).

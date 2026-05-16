@@ -1,24 +1,24 @@
 # Adding a new flavor (CLI agent)
 
 Multicooker ships with `claude`, `codex`, `gemini`, and `dummy`. To add a
-new CLI agent (например aider, cursor-cli, ollama-runner, локальный
-binary) — пройди этот гайд. ~10 минут на копипасту, основное время уйдёт
-на отладку argv твоего CLI.
+new CLI agent (e.g. aider, cursor-cli, ollama-runner, a local binary) —
+follow this guide. ~10 minutes of copy-paste; most of the time will go
+into debugging your CLI's argv.
 
-## Что нужно решить заранее
+## What to decide up front
 
-1. **Как CLI авторизуется?** Через subscription OAuth-файлы на хосте
-   (как у claude/codex/gemini)? Через API-ключ в env? Без auth (как
-   `dummy`)? Это влияет на `creds.py`.
-2. **Есть ли non-interactive флаг?** Если CLI зависает на approval-
-   промптах в headless-режиме без флага вроде `--yes`, `--yolo`,
-   `--dangerously-bypass-...` — нужно найти аналог. Без него таймаут
-   убъёт раунд раньше, чем CLI напечатает первую строку.
-3. **Самостоятельный или с base-образом?** Если установка тяжёлая
-   (`npm i -g …`, `apt install …`) — бери layout B (shared base).
-   Иначе layout A.
+1. **How does the CLI authenticate?** Via subscription OAuth files on the
+   host (like claude/codex/gemini)? Via an API key in env? No auth (like
+   `dummy`)? This affects `creds.py`.
+2. **Is there a non-interactive flag?** If the CLI hangs on approval
+   prompts in headless mode without something like `--yes`, `--yolo`,
+   `--dangerously-bypass-...` — you need to find the equivalent. Without
+   it the timeout will kill the round before the CLI prints a single line.
+3. **Standalone or with a base image?** If the install is heavy
+   (`npm i -g …`, `apt install …`) — go with layout B (shared base).
+   Otherwise layout A.
 
-## Быстрая шпаргалка — какие файлы создать
+## Quick cheatsheet — which files to create
 
 ```
 multicooker/templates/
@@ -29,16 +29,16 @@ multicooker/templates/
     └── .dockerignore                       ← std (`*` on line 1, `!entrypoint.sh` on 2)
 ```
 
-И две правки в коде:
+And two code edits:
 
 ```
-multicooker/creds.py               ← добавить _snapshot_<flavor>(...) + диспетчер
-multicooker/brief_schema.py        ← добавить flavor в KNOWN_FLAVORS
+multicooker/creds.py               ← add _snapshot_<flavor>(...) + dispatcher
+multicooker/brief_schema.py        ← add flavor to KNOWN_FLAVORS
 ```
 
-## Шаг за шагом
+## Step by step
 
-### 1. Заскелетить flavor-папку
+### 1. Scaffold the flavor directory
 
 ```bash
 cp templates/cook/participants/_custom/Dockerfile.example     templates/cook/participants/myflavor/Dockerfile
@@ -47,18 +47,18 @@ chmod +x templates/cook/participants/myflavor/entrypoint.sh
 echo $'*\n!entrypoint.sh' > templates/cook/participants/myflavor/.dockerignore
 ```
 
-### 2. Заполнить Dockerfile
+### 2. Fill in the Dockerfile
 
-`Dockerfile.example` — не комментарий-документация, а рабочий шаблон с
-TODO. Поправь:
+`Dockerfile.example` is not a doc comment — it's a working template with
+TODOs. Fix:
 
-- `FROM mc-base-yourflavor:latest` → или твой публичный образ (layout A),
-  или имя твоей base (layout B; см. шаг 5).
-- `USER node` → юзер, который существует в base'е.
+- `FROM mc-base-yourflavor:latest` → either your public image (layout A),
+  or your base's name (layout B; see step 5).
+- `USER node` → a user that exists in the base.
 
-### 3. Заполнить entrypoint.sh
+### 3. Fill in entrypoint.sh
 
-В `entrypoint.sh.example` две ветки: participant и judge. Контракт:
+`entrypoint.sh.example` has two branches: participant and judge. Contract:
 
 | input  (RO)                       | output                              |
 |-----------------------------------|-------------------------------------|
@@ -67,30 +67,30 @@ TODO. Поправь:
 | `/work/raw/` (both)               |                                     |
 | `/work/submissions/A/`, B/, C/ … (judge) |                              |
 
-Эталоны argv по существующим flavors — внутри
-`entrypoint.sh.example`. Главное — non-interactive флаг и форвард
-`MULTICOOKER_MODEL` (опционально, если CLI поддерживает выбор модели
-через брифа).
+Reference argv for the existing flavors is inside
+`entrypoint.sh.example`. The key things: the non-interactive flag and
+forwarding `MULTICOOKER_MODEL` (optional, if the CLI supports model
+selection from the brief).
 
-### 4. Подключить в `creds.py`
+### 4. Wire it into `creds.py`
 
-Если flavor headless (без auth) — добавь его в ветку `elif f == "dummy":
-pass` в `snapshot()`. Если есть подписочные креды — пиши собственный
-`_snapshot_myflavor(into)`, аналог существующих `_snapshot_codex` /
-`_snapshot_gemini`. Стандартная форма: проверить наличие исходника,
-скопировать в `.auth/<flavor>/<file>` с `chmod 0600`. **Креды должны
-жить в bind-mount RO** в контейнере; путь подцепляется в
+If the flavor is headless (no auth) — add it to the `elif f == "dummy":
+pass` branch in `snapshot()`. If it has subscription creds — write your
+own `_snapshot_myflavor(into)`, analogous to the existing `_snapshot_codex`
+/ `_snapshot_gemini`. Standard form: check the source exists, copy into
+`.auth/<flavor>/<file>` with `chmod 0600`. **Creds must live in a RO
+bind-mount** inside the container; the path is wired up in
 `compose_render.py`.
 
-### 5. (layout B) Написать base Dockerfile
+### 5. (layout B) Write the base Dockerfile
 
 ```bash
 mkdir -p templates/base/myflavor
 $EDITOR templates/base/myflavor/Dockerfile
 ```
 
-Здесь живёт всё тяжёлое: apt-пакеты, runtime (`node:22-slim` /
-`python:3.12-slim`), `npm i -g …` или `pip install …`. Обычная форма:
+This is where everything heavy lives: apt packages, runtime (`node:22-slim`
+/ `python:3.12-slim`), `npm i -g …` or `pip install …`. Typical shape:
 
 ```dockerfile
 FROM node:22-slim
@@ -102,48 +102,49 @@ USER node
 WORKDIR /work
 ```
 
-Build один раз: `multicooker build-base myflavor`.
+Build once: `multicooker build-base myflavor`.
 
-### 6. Обновить schema
+### 6. Update the schema
 
-В `multicooker/brief_schema.py` добавь имя в `KNOWN_FLAVORS`. Иначе
-валидатор брифа отклонит брифы с твоим flavor'ом.
+In `multicooker/brief_schema.py` add the name to `KNOWN_FLAVORS`.
+Otherwise the brief validator will reject briefs that use your flavor.
 
 ### 7. Smoke
 
 ```bash
 multicooker new add-flavor-test --participants a=myflavor
-$EDITOR cooks/<date>-add-flavor-test/BRIEF.md  # любая мини-задача
+$EDITOR cooks/<date>-add-flavor-test/BRIEF.md  # any mini task
 multicooker doctor add-flavor-test
 multicooker cook   add-flavor-test
-multicooker judge  add-flavor-test  # понадобится хотя бы один
-                                    # judge другого flavor'а
+multicooker judge  add-flavor-test  # you'll need at least one
+                                    # judge of a different flavor
 multicooker report add-flavor-test
 ```
 
-`doctor` отловит большинство глупых ошибок (missing Dockerfile,
-unknown flavor в схеме, отсутствие base). `cook` упадёт с понятным
-exit code если `entrypoint.sh` не написал RESULT.md за `timeout_s`.
+`doctor` catches most silly mistakes (missing Dockerfile, unknown flavor
+in schema, missing base). `cook` fails with a clear exit code if
+`entrypoint.sh` doesn't produce RESULT.md within `timeout_s`.
 
-## Reference: что копировать у кого
+## Reference: what to copy from where
 
-- **Headless / без auth:** `templates/cook/participants/dummy/` (layout
-  A, alpine, ~10 строк entrypoint).
+- **Headless / no auth:** `templates/cook/participants/dummy/` (layout
+  A, alpine, ~10-line entrypoint).
 - **Subscription OAuth + npm-installed CLI:**
-  `templates/cook/participants/claude/` или `gemini/` (layout B,
+  `templates/cook/participants/claude/` or `gemini/` (layout B,
   base = node:22-slim + npm).
-- **Plain-file auth (`~/.<cli>/auth.json`)**: `codex` — самый простой
-  пример с `_snapshot_codex` в `creds.py`.
+- **Plain-file auth (`~/.<cli>/auth.json`)**: `codex` — the simplest
+  example with `_snapshot_codex` in `creds.py`.
 
-## Что НЕ нужно делать
+## What NOT to do
 
-- Не добавляй API-key fallback как silent path. Если flavor требует
-  API-ключ — пусть `_snapshot_<flavor>` падает с явной `CredsError`
-  «set FOO env / log in via …», без молчаливого fallback.
-- Не вешай новые тяжёлые тулы (компиляторы, наборы данных) в
-  `templates/base/<flavor>/` — base должен быть стабильным. Cook-
-  специфичные зависимости держи в Dockerfile конкретного `cooks/<task>/
-  participants/<flavor>/Dockerfile` (он переопределяет шаблон).
-- Не привязывай flavor к одной модели. Модель выбирается через
-  `model:` в `brief.yaml` per participant — entrypoint обязан
-  уважать `$MULTICOOKER_MODEL`, если CLI это умеет.
+- Don't add an API-key fallback as a silent path. If the flavor requires
+  an API key — let `_snapshot_<flavor>` fail with an explicit `CredsError`
+  ("set FOO env / log in via …"), no silent fallback.
+- Don't pile new heavy tools (compilers, datasets) into
+  `templates/base/<flavor>/` — the base should stay stable. Keep
+  cook-specific deps in the per-cook
+  `cooks/<task>/participants/<flavor>/Dockerfile` (it overrides the
+  template).
+- Don't pin a flavor to a single model. The model is selected via
+  `model:` in `brief.yaml` per participant — the entrypoint must
+  respect `$MULTICOOKER_MODEL` if the CLI supports it.

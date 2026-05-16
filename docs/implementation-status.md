@@ -1,78 +1,78 @@
 # Implementation status
 
-Что в репо реально работает на текущий момент vs что описано в
-`CLAUDE.md` / `docs/` как целевое (и единственное поддерживаемое)
-поведение. Если `multicooker cook --docker` падает с "not
-implemented" — этот файл показывает, что нужно дописать.
+What actually works in the repo right now vs what's described in
+`CLAUDE.md` / `docs/` as the target (and only supported) behavior.
+If `multicooker cook --docker` fails with "not implemented" — this file
+shows what needs to be written.
 
-## Целевое поведение (см. CLAUDE.md, docs/orchestration.md)
+## Target behavior (see CLAUDE.md, docs/orchestration.md)
 
-- Все участники и судьи — в контейнерах, параллельно.
-- Подписочная auth через bind-mount / named volume.
-- Dangerous-skip / bypass / yolo флаги внутри контейнеров.
+- All participants and judges in containers, in parallel.
+- Subscription auth via bind-mount / named volume.
+- Dangerous-skip / bypass / yolo flags inside containers.
 - Per-service bridge networks: `net-participant-<name>` /
-  `net-judge-<name>`. Между контейнерами видимости нет, egress
-  открыт (см. `docs/orchestration.md`).
-- Анонимизация и copy (не symlink) для судей.
+  `net-judge-<name>`. No visibility between containers, egress is open
+  (see `docs/orchestration.md`).
+- Anonymization and copy (not symlink) for judges.
 
-## Что реально в коде (v0.1)
+## What's actually in the code (v0.1)
 
-| компонент                              | состояние                                              |
+| component                              | state                                                  |
 |----------------------------------------|--------------------------------------------------------|
-| `multicooker new <task>`                | ✅ работает, копирует `templates/cook/`                 |
-| `templates/cook/BRIEF.md/brief.yaml/JUDGE_BRIEF.md` | ✅ есть                                  |
-| `templates/cook/participants/<f>/Dockerfile` | ✅ есть, но **не используются** runtime'ом       |
-| `multicooker cook <task>` host-mode     | ✅ работает (`host_runner.py`) — это временный фоллбек  |
+| `multicooker new <task>`                | ✅ works, copies `templates/cook/`                      |
+| `templates/cook/BRIEF.md/brief.yaml/JUDGE_BRIEF.md` | ✅ present                               |
+| `templates/cook/participants/<f>/Dockerfile` | ✅ present, but **not used** by the runtime       |
+| `multicooker cook <task>` host-mode     | ✅ works (`host_runner.py`) — temporary fallback        |
 | `multicooker cook <task> --docker`      | ❌ `error: --docker mode not implemented in v0.1`       |
-| `multicooker judge <task>`              | ✅ host-mode; копирует (не симлинкует) — это правильно  |
-| `multicooker judge <task> --docker`     | ❌ нет                                                  |
-| Подписочная auth в контейнерах         | ❌ не подключено                                        |
-| compose.yaml per cook                  | ❌ не генерируется                                      |
+| `multicooker judge <task>`              | ✅ host-mode; copies (doesn't symlink) — that's right   |
+| `multicooker judge <task> --docker`     | ❌ nope                                                 |
+| Subscription auth in containers        | ❌ not wired up                                         |
+| compose.yaml per cook                  | ❌ not generated                                        |
 | Per-service bridge networks            | ✅ `net-participant-<n>` / `net-judge-<n>` per cook     |
-| Allowlist egress proxy                 | ❌ опт-ин через compose.override.yaml, не дефолт        |
+| Allowlist egress proxy                 | ❌ opt-in via compose.override.yaml, not default        |
 
-## Что нужно сделать, чтобы привести код к CLAUDE.md
+## What needs doing to bring the code in line with CLAUDE.md
 
 ### 1. Auth setup (`multicooker init-auth`)
 
-Новая команда. См. `docs/auth.md` — она проверяет/готовит:
-- `~/.codex/auth.json` присутствует;
-- `~/.gemini/oauth_creds.json` присутствует;
-- собрать `mc-claude-base` Docker image;
-- запустить интерактивный `claude /login` в контейнере с named
+New command. See `docs/auth.md` — it checks/prepares:
+- `~/.codex/auth.json` is present;
+- `~/.gemini/oauth_creds.json` is present;
+- builds the `mc-claude-base` Docker image;
+- runs interactive `claude /login` in a container with the named
   volume `mc-claude-auth`;
-- echo-test всех трёх.
+- echo-test all three.
 
-### 2. compose-шаблон в `templates/cook/`
+### 2. compose template in `templates/cook/`
 
-`templates/cook/compose.yaml.tmpl` — генерируется при `cook` в
-`cooks/<task>/compose.yaml`. Параметризация через
-`cooks/<task>/.env`. Скелет — в `docs/orchestration.md`.
+`templates/cook/compose.yaml.tmpl` — generated on `cook` into
+`cooks/<task>/compose.yaml`. Parameterized via `cooks/<task>/.env`.
+Skeleton is in `docs/orchestration.md`.
 
-Hard-rules в шаблоне:
-- argv-порядок per flavor (см. CLAUDE.md);
-- dangerous-skip флаги (контейнер = sandbox);
-- per-service bridge сети (`net-participant-<n>`, `net-judge-<n>`);
+Hard rules in the template:
+- argv order per flavor (see CLAUDE.md);
+- dangerous-skip flags (the container IS the sandbox);
+- per-service bridge networks (`net-participant-<n>`, `net-judge-<n>`);
 - volumes: bind-mount BRIEF/raw RO, out/ RW, auth.
 
 ### 3. `compose_runner.py`
 
-Заменяет `host_runner.py` (или живёт рядом, host остаётся как
-deprecated fallback). Контракт:
+Replaces `host_runner.py` (or lives next to it; host stays as a
+deprecated fallback). Contract:
 
 ```python
 def run_cell(cook_dir, participant_name, flavor, timeout_s) -> CellResult:
     # docker compose -p mc-<task> up -d participant-<name>
-    # docker logs --follow → парсим rate-limit signatures
+    # docker logs --follow → parse rate-limit signatures
     # wait timeout / exit
     # docker compose -p mc-<task> rm -fv participant-<name>
     ...
 ```
 
-Парсинг rate-limit'ов — переносим из `host_runner.py:_RL_PATTERNS`
-один в один, источник стрима меняется на `docker logs --follow`.
+Rate-limit parsing — port from `host_runner.py:_RL_PATTERNS` one to one,
+the stream source changes to `docker logs --follow`.
 
-### 4. `cook.py` через compose
+### 4. `cook.py` via compose
 
 ```python
 def cook(name, root, ...):
@@ -90,45 +90,45 @@ def cook(name, root, ...):
     write_run_result(...)
 ```
 
-`--docker` flag перестаёт быть опт-ин (становится дефолтом).
-Host-ветка либо удаляется, либо живёт под `--legacy-host` для
-разработки.
+The `--docker` flag stops being opt-in (becomes the default). The host
+branch is either deleted, or lives under `--legacy-host` for development.
 
-### 5. `judge.py` через compose
+### 5. `judge.py` via compose
 
-То же, что cook, только:
-- материализация `judging/_judge_input/` (копии, не симлинки —
-  это уже сделано правильно в текущем `judge.py`);
-- compose-сервис per judge;
-- copy `outbox/` обратно после `down`.
+Same as cook, only:
+- materialize `judging/_judge_input/` (copies, not symlinks — already
+  done correctly in the current `judge.py`);
+- compose service per judge;
+- copy `outbox/` back after `down`.
 
-### 6. (опционально) egress-allowlist proxy
+### 6. (optional) egress allowlist proxy
 
-Прозрачный HTTP/HTTPS forward-proxy на сети `egress`, фильтрующий
-по SNI на список auth+API-доменов. Tinyproxy / squid / Caddy —
-любой подойдёт. Для первой docker-итерации — не блокер, но
-желательно потом.
+A transparent HTTP/HTTPS forward proxy on the `egress` network,
+filtering by SNI against a list of auth+API domains. Tinyproxy / squid
+/ Caddy — any will do. For the first docker iteration it's not a
+blocker, but desirable later.
 
 ## Risks / open questions
 
-- **claude /login UX.** Открыть URL в браузере хоста, скопировать
-  callback — обычная процедура для claude-code на Linux. На маке
-  пользователь её не видел никогда. Скрипт `init-auth` должен
-  явно говорить "сейчас откроется URL, авторизуйся".
-- **Docker Desktop license** на корпоративных маках. Workaround:
-  Orbstack или Colima.
-- **Лимит docker-сетей.** Каждый cook = своя сеть. Чисти
-  завершённые: `docker network prune`.
+- **claude /login UX.** Open a URL in the host browser, copy the
+  callback — standard procedure for claude-code on Linux. A Mac user
+  has never seen this. The `init-auth` script should explicitly say
+  "a URL is about to open, log in".
+- **Docker Desktop license** on corporate Macs. Workaround: Orbstack
+  or Colima.
+- **docker network limit.** Each cook = its own network. Clean up
+  finished ones: `docker network prune`.
 
-## Что НЕ нужно делать
+## What NOT to do
 
-- Не подключать API-ключи как fallback "если подписка протухла".
-  Лучше явный fail, чем тихий апгрейд на платный путь.
-- Не пытаться вытащить токен claude из macOS Keychain
-  bind-mount'ом — формат бинарный, OS-specific. Только named
-  volume + одноразовый `/login`.
-- Не добавлять middlebox/observer "на всякий случай" — это
-  reproxy-специфика. Если конкретный cook требует — добавит в
+- Don't wire in API keys as a "subscription expired" fallback. Better
+  an explicit fail than a quiet upgrade to the paid path.
+- Don't try to extract the claude token from the macOS Keychain via
+  bind-mount — the format is binary and OS-specific. Only named
+  volume + one-shot `/login`.
+- Don't add a middlebox/observer "just in case" — that's
+  reproxy-specific. If a particular cook needs it, it adds it via
   `cooks/<task>/compose.override.yaml`.
-- Не убирать dangerous-skip флаги "для безопасности". Контейнер
-  и есть sandbox; без флагов CLI зависнут на approval-промпте.
+- Don't remove dangerous-skip flags "for safety". The container IS
+  the sandbox; without the flags the CLIs will hang on an approval
+  prompt.

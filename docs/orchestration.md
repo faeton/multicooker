@@ -1,10 +1,9 @@
-# Orchestration: что внутри cook / judge
+# Orchestration: what's inside cook / judge
 
-Инспирирована reproxy/arena. На один cook поднимается отдельный
-docker compose project, чтобы сети и volume'ы были изолированы между
-задачами.
+Inspired by reproxy/arena. Each cook gets its own docker compose
+project so networks and volumes stay isolated between tasks.
 
-## Картинка
+## Picture
 
 ```
               cooks/<task>/  (compose project: mc-<task>)
@@ -22,51 +21,53 @@ docker compose project, чтобы сети и volume'ы были изолиро
    │          │           │           │           │
    └──────────┴───────────┴───────────┴───────────┘
                           │
-                          ▼  egress в интернет открыт
+                          ▼  egress to internet is open
                      (npm / pypi / github / LLM API)
 ```
 
-## Сети
+## Networks
 
-Каждый участник и каждый судья — на собственной bridge-сети
-(`net-participant-<name>` / `net-judge-<name>`). Это даёт два
-свойства:
+Each participant and each judge sits on its own bridge network
+(`net-participant-<name>` / `net-judge-<name>`). This gives two
+properties:
 
-- Контейнеры одного cook'а **не видят друг друга**: они в разных
-  сетях, имена и IP не резолвятся. Участник не может подсмотреть
-  чужой `/work/out/` через сеть, судья не может пингануть
-  участников.
-- **Egress в интернет открыт.** Участникам легитимно нужен npm /
-  pypi / github / docs / LLM API для решения задачи. Жёсткий
-  allowlist ломает реальные кейсы (пакеты, dataset, документация),
-  поэтому дефолт — открытый egress, а sandbox-гарантия лежит на
-  контейнере (cgroup, namespaces, RO bind-mounts), не на сети.
+- Containers within one cook **can't see each other**: they're on
+  different networks, names and IPs don't resolve. A participant
+  can't peek at someone else's `/work/out/` over the network, a
+  judge can't ping participants.
+- **Egress to internet is open.** Participants legitimately need
+  npm / pypi / github / docs / LLM API to solve the task. A strict
+  allowlist breaks real cases (packages, datasets, documentation),
+  so the default is open egress, and the sandbox guarantee rests on
+  the container (cgroup, namespaces, RO bind-mounts), not the
+  network.
 
-Если конкретный cook требует строгого allowlist'а (sensitive raw,
-audit-режим), он добавляется локальным `compose.override.yaml` —
-это решение на уровне cook'а, не дефолт.
+If a specific cook needs a strict allowlist (sensitive raw, audit
+mode), it's added via a local `compose.override.yaml` — that's a
+cook-level decision, not the default.
 
-## Контейнер участника
+## Participant container
 
-Imаge: `cooks/<task>/participants/<flavor>/Dockerfile`. Базовый
-шаблон — `templates/cook/participants/<flavor>/Dockerfile`.
+Image: `cooks/<task>/participants/<flavor>/Dockerfile`. Base
+template — `templates/cook/participants/<flavor>/Dockerfile`.
 
-Mounts (read-only кроме `out/`):
+Mounts (read-only except `out/`):
 
 | host                                   | container             | mode |
 |----------------------------------------|-----------------------|------|
 | `cooks/<task>/BRIEF.md`                | `/work/BRIEF.md`      | ro   |
 | `cooks/<task>/raw/`                    | `/work/raw/`          | ro   |
 | `cooks/<task>/work/<name>/out/`        | `/work/out/`          | rw   |
-| (auth) см. `docs/auth.md`              | `/root/.codex` etc.   | ro/rw|
+| (auth) see `docs/auth.md`              | `/root/.codex` etc.   | ro/rw|
 
-Никаких других host-путей. В частности **никаких симлинков** в
-`/work/` наружу — они рассольвятся в путь вне sandbox'а CLI и Read/
-Write/Bash тихо откажут (баг #1 из reproxy/arena).
+No other host paths. In particular **no symlinks** inside `/work/`
+pointing outside — they'll resolve to a path outside the CLI's
+sandbox and Read/Write/Bash will silently refuse (bug #1 from
+reproxy/arena).
 
-CMD — фиксированная для каждой flavor. **Контейнер = sandbox**,
-поэтому используем dangerous-skip флаги (без них CLI в
-non-interactive режиме зависают на approval-промптах):
+CMD is fixed per flavor. **Container = sandbox**, so we use
+dangerous-skip flags (without them CLIs in non-interactive mode
+hang on approval prompts):
 
 ```bash
 # claude
@@ -80,28 +81,29 @@ codex exec --cd /work --skip-git-repo-check \
 gemini --yolo -p "$PROMPT"
 ```
 
-Промпт ВСЕГДА **до** `--add-dir` (claude), иначе вариативный флаг
-съест позиционный prompt (баг #2 из reproxy/arena). Эталон argv —
+The prompt ALWAYS goes **before** `--add-dir` (claude), otherwise
+the variadic flag eats the positional prompt (bug #2 from
+reproxy/arena). The canonical argv reference —
 `reproxy/arena/coding-sandbox/host_runner.py:CLI_COMMANDS`.
 
-Эти флаги безопасны именно потому, что:
-- контейнер изолирован от host'а (cgroup, network namespace, no
-  bind-mounts наружу `/work` и creds);
-- участник на собственной bridge-сети, других участников и судей
-  по сети не видит;
-- `out/` — единственный rw bind-mount, повреждать там нечего
-  кроме результата самого участника.
+These flags are safe precisely because:
+- the container is isolated from the host (cgroup, network
+  namespace, no bind-mounts outside `/work` and creds);
+- the participant is on its own bridge network, can't see other
+  participants or judges over the network;
+- `out/` is the only rw bind-mount, nothing to corrupt there
+  except the participant's own result.
 
-## Контейнер судьи
+## Judge container
 
-После `cook` multicooker собирает `judging/_judge_input/`:
+After `cook`, multicooker assembles `judging/_judge_input/`:
 
-- копирует (НЕ симлинкует) `BRIEF.md`, `JUDGE_BRIEF.md`, `raw/`;
-- копирует `work/<participant>/out/` в `submissions/<letter>/`,
-  где letter = A/B/C по случайной перестановке `_mapping.json`;
-- сборка лежит на хосте, монтируется RO в контейнер судьи.
+- copies (NOT symlinks) `BRIEF.md`, `JUDGE_BRIEF.md`, `raw/`;
+- copies `work/<participant>/out/` into `submissions/<letter>/`,
+  where letter = A/B/C from a random permutation `_mapping.json`;
+- the build sits on the host, mounted RO into the judge container.
 
-Контейнер судьи получает:
+The judge container gets:
 
 | host                                             | container                | mode |
 |--------------------------------------------------|--------------------------|------|
@@ -109,124 +111,123 @@ gemini --yolo -p "$PROMPT"
 | `cooks/<task>/judging/<judge-name>/outbox/`      | `/work/outbox/`          | rw   |
 | (auth)                                            | …                        |      |
 
-Судья пишет `outbox/scores.json` и `outbox/review.md`. Подсказки
-по формату — в `JUDGE_BRIEF.md`. Анонимная карта `letter→flavor`
-лежит **только** на хосте в `_mapping.json`, в контейнер не
-прокидывается.
+The judge writes `outbox/scores.json` and `outbox/review.md`.
+Format hints live in `JUDGE_BRIEF.md`. The anonymous
+`letter→flavor` map sits **only** on the host in `_mapping.json`,
+never piped into the container.
 
-## Жизненный цикл cell'а
+## Cell lifecycle
 
-Для каждого `(participant, scenario_or_task)` cell:
+For each `(participant, scenario_or_task)` cell:
 
 1. `docker compose -p mc-<task> up -d <participant>`. Healthcheck
-   ждёт, что CLI готов.
-2. `docker exec` запускает CLI с фиксированным промптом, читающим
-   `/work/BRIEF.md` + `/work/raw/`, пишущим в `/work/out/`.
-3. Wall-clock cap (`brief.yaml: timeout_s`) убивает зависший
-   контейнер.
-4. На выходе: `docker logs` → `cooks/<task>/logs/<participant>/`,
-   `out/` уже на хосте через bind-mount.
-5. `docker compose down -v` для этого участника.
+   waits for the CLI to be ready.
+2. `docker exec` launches the CLI with a fixed prompt that reads
+   `/work/BRIEF.md` + `/work/raw/`, writes to `/work/out/`.
+3. Wall-clock cap (`brief.yaml: timeout_s`) kills a hung
+   container.
+4. On exit: `docker logs` → `cooks/<task>/logs/<participant>/`,
+   `out/` is already on the host via bind-mount.
+5. `docker compose down -v` for this participant.
 
-Параллельность: все участники поднимаются одновременно (с 2-сек
-stagger'ом, чтобы Keychain/OAuth не получили простуду от
-одновременных refresh'ей — наследие из arena).
+Parallelism: all participants come up simultaneously (with a
+2-second stagger so Keychain/OAuth don't catch a cold from
+simultaneous refreshes — legacy from arena).
 
-## Refine: round N+1 поверх round N
+## Refine: round N+1 on top of round N
 
-`multicooker refine <task>` — итерация: участники получают свой
-**предыдущий** `out/` как стартовое состояние и фидбек, а не
-чистый лист. Это другой режим, чем cook (bake-off с нуля), и
-артефакты лежат рядом.
+`multicooker refine <task>` — iteration: participants get their
+**previous** `out/` as the starting state plus feedback, not a
+blank slate. This is a different mode from cook (bake-off from
+scratch), and artifacts sit alongside.
 
-### Что переживает round, что снапшотится
+### What survives a round, what gets snapshotted
 
-Состояние раунда N до запуска round N+1:
+State of round N before launching round N+1:
 
 ```
 cooks/<task>/
-├── work/<p>/out/              ← живой output round N (RW bind-mount)
-├── judging/_inbox/<p>/out/    ← sealed копия round N для судейства
-└── rounds/                    ← (создаётся при первом refine)
+├── work/<p>/out/              ← live output of round N (RW bind-mount)
+├── judging/_inbox/<p>/out/    ← sealed copy of round N for judging
+└── rounds/                    ← (created on first refine)
 ```
 
-Перед запуском round N+1 `refine` делает один атомарный шаг:
+Before launching round N+1, `refine` does one atomic step:
 
-1. **Снапшот round N** → `rounds/<N>/<p>/` (copytree, не симлинк).
-   Плюс `rounds/<N>/_inbox/` — sealed-копия judge input'а, чтобы
-   историю судейства тоже можно было воспроизвести.
-2. **Не трогает** `work/<p>/out/` — он остаётся в RW bind-mount
-   для контейнера, и участник в round N+1 видит свой round-N
-   результат на месте, как «черновик для правок».
-3. После завершения round N+1: `_seal_for_judging()` пересобирает
-   `judging/_inbox/` поверх (старый inbox теперь живёт только в
+1. **Snapshot round N** → `rounds/<N>/<p>/` (copytree, not
+   symlink). Plus `rounds/<N>/_inbox/` — a sealed copy of the
+   judge input so judging history is reproducible too.
+2. **Doesn't touch** `work/<p>/out/` — it stays in the RW
+   bind-mount for the container, and in round N+1 the participant
+   sees its round-N result in place, like "a draft to revise".
+3. After round N+1 finishes: `_seal_for_judging()` rebuilds
+   `judging/_inbox/` on top (the old inbox now lives only in
    `rounds/<N>/_inbox/`).
 
-Принцип: **`work/` — всегда «текущий round», `rounds/<N>/` —
-immutable history**. `out/` никогда не удаляется — он просто
-эволюционирует. Если round N+1 испортил результат, вернуть
-прошлое можно копированием `rounds/<N>/<p>/` обратно в
-`work/<p>/out/` (multicooker не делает этого автоматически —
-осознанное решение пользователя).
+Principle: **`work/` is always "the current round", `rounds/<N>/`
+is immutable history**. `out/` is never deleted — it just
+evolves. If round N+1 broke the result, you can roll back by
+copying `rounds/<N>/<p>/` back into `work/<p>/out/` (multicooker
+doesn't do this automatically — deliberate user decision).
 
-### FEEDBACK.md и FEEDBACK_<flavor>.md
+### FEEDBACK.md and FEEDBACK_<flavor>.md
 
-Refine читает два файла **из корня cook'а** (не из `work/`):
+Refine reads two files **from the cook root** (not from `work/`):
 
-| файл                       | назначение                                   |
+| file                       | purpose                                      |
 |----------------------------|----------------------------------------------|
-| `FEEDBACK.md`              | shared фидбек, виден всем участникам         |
-| `FEEDBACK_<flavor>.md`     | personal фидбек для конкретного flavor       |
+| `FEEDBACK.md`              | shared feedback, visible to all participants |
+| `FEEDBACK_<flavor>.md`     | personal feedback for a specific flavor      |
 
-Оба inline-вставляются в `PROMPT.txt` round'а N+1 — отдельным
-заголовком («Shared feedback» и «Personal feedback»). FEEDBACK
-файлы НЕ монтируются в контейнер сами по себе — только через
-содержимое `PROMPT.txt`. Это сознательно: участник видит ровно
-тот текст, что мы ему адресовали, и не получит «случайно»
-фидбек, написанный для другого flavor.
+Both are inlined into round N+1's `PROMPT.txt` — under separate
+headers ("Shared feedback" and "Personal feedback"). FEEDBACK
+files are NOT mounted into the container on their own — only via
+the contents of `PROMPT.txt`. This is deliberate: the participant
+sees exactly the text we addressed to it, and won't "accidentally"
+get feedback written for another flavor.
 
-`FEEDBACK.md` опциональный — если его нет, refine стартует с
-warning'ом и пустым shared-блоком. `FEEDBACK_<flavor>.md` тоже
-опциональный — отсутствует ⇒ personal-блок не добавляется.
+`FEEDBACK.md` is optional — if missing, refine starts with a
+warning and an empty shared block. `FEEDBACK_<flavor>.md` is also
+optional — absent ⇒ no personal block is added.
 
-`multicooker refine --feedback <path>` подменяет источник shared
-feedback'а на произвольный файл (вне cook_dir). Полезно, когда
-один и тот же фидбек применяется к нескольким cook'ам, или
-feedback живёт в общем «issue tracker» репо отдельно от арен.
-Personal-feedback всегда читается из `cook_dir/FEEDBACK_<flavor>.md`
-(per-cook).
+`multicooker refine --feedback <path>` overrides the shared
+feedback source with an arbitrary file (outside cook_dir).
+Useful when the same feedback applies to several cooks, or
+feedback lives in a shared "issue tracker" repo separate from
+the arenas. Personal feedback is always read from
+`cook_dir/FEEDBACK_<flavor>.md` (per-cook).
 
-Один FEEDBACK живёт **столько раундов, сколько ты его не
-перезаписал**. Между раундами `refine` не очищает FEEDBACK
-файлы. Хочешь свежий фидбек на round N+2 — перепиши `FEEDBACK.md`
-вручную перед запуском.
+One FEEDBACK lives **as many rounds as you don't overwrite it**.
+Between rounds, `refine` doesn't clear FEEDBACK files. Want fresh
+feedback for round N+2 — rewrite `FEEDBACK.md` by hand before
+launching.
 
-### Round-counter
+### Round counter
 
-`rounds/` определяет нумерацию: если в нём `{1,2}`, то `work/`
-содержит round 3 (только что закончен), и следующий refine — это
-round 4. Если `rounds/` пустой/отсутствует, `work/` = round 1
-(оригинальный cook), refine = round 2.
+`rounds/` defines numbering: if it contains `{1,2}`, then `work/`
+holds round 3 (just finished), and the next refine is round 4.
+If `rounds/` is empty/absent, `work/` = round 1 (the original
+cook), refine = round 2.
 
-Метаданные раунда: `REFINE_<N>.json` (старт) и
-`REFINE_<N>_RESULT.json` (статусы по участникам). Удалять их
-нежелательно — `report` потенциально опирается на них для
-истории прогресса (см. `docs/lifecycle.md`).
+Round metadata: `REFINE_<N>.json` (start) and
+`REFINE_<N>_RESULT.json` (per-participant statuses). Deleting
+them is undesirable — `report` may rely on them for progress
+history (see `docs/lifecycle.md`).
 
-### Что НЕ переносится между раундами
+### What does NOT carry over between rounds
 
-- `judging/<judge-name>/` (scores) — каждый round пересудится
-  заново через `multicooker judge`. История прошлых scores лежит
-  в `rounds/<N>/_inbox/` и в `judging/_logs/`.
-- `_mapping.json` — пересоздаётся каждое судейство (новая
-  случайная перестановка A/B/C, чтобы судья не натренировался).
+- `judging/<judge-name>/` (scores) — each round is re-judged
+  from scratch via `multicooker judge`. History of past scores
+  lives in `rounds/<N>/_inbox/` and in `judging/_logs/`.
+- `_mapping.json` — regenerated for each judging (new random
+  A/B/C permutation, so the judge doesn't get trained).
 
-## Что мы НЕ переносим из arena
+## What we do NOT carry over from arena
 
-- Middlebox / observer / origin контейнеров здесь нет — у нас
-  задачи не сетевые, наблюдать за SNI не за чем. Если конкретный
-  cook требует сетевого мониторинга, добавляешь observer'а в его
-  локальный `compose.override.yaml`.
-- Variants (cold/warm) — пока нет. Если понадобится, естественное
-  место — отдельные `participants` в brief.yaml с разными
-  `model:` или env'ами.
+- Middlebox / observer / origin containers aren't here — our
+  tasks aren't network-related, no SNI to observe. If a specific
+  cook needs network monitoring, add an observer to its local
+  `compose.override.yaml`.
+- Variants (cold/warm) — not yet. If needed, the natural place
+  is separate `participants` in brief.yaml with different
+  `model:` or env vars.

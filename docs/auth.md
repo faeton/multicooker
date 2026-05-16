@@ -1,90 +1,93 @@
-# Auth: подписочные CLI в контейнерах без API-ключей
+# Auth: subscription CLIs in containers without API keys
 
-Это перенос/расширение того, что было в
-`reproxy/arena/coding-sandbox/README.md`. Цель — гонять `claude` /
-`codex` / `gemini` внутри Linux-контейнеров на macOS-хосте, используя
-подписки, без `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY`.
+This is a port/extension of what was in
+`reproxy/arena/coding-sandbox/README.md`. Goal: run `claude` /
+`codex` / `gemini` inside Linux containers on a macOS host, using
+subscriptions, without `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` /
+`GEMINI_API_KEY`.
 
-## TL;DR — два пути для claude
+## TL;DR — two paths for claude
 
-**Option A (default на macOS): Keychain snapshot.** Перед каждым
-`cook` multicooker вытаскивает credential JSON из Keychain
+**Option A (default on macOS): Keychain snapshot.** Before each
+`cook` multicooker pulls the credential JSON out of Keychain
 (`security find-generic-password -s "Claude Code-credentials" -w`)
-и кладёт в `cooks/<task>/.auth/claude/.credentials.json`, который
-RO-маунтится в `/root/.claude/`. Это формат, который Linux-сборка
-claude-code понимает напрямую (тот же JSON, что Keychain хранит как
-password value). Никакого `claude /login` не требуется.
-Access token живёт ~5 часов, чего хватает на любой нормальный cook.
+and writes it to `cooks/<task>/.auth/claude/.credentials.json`,
+which is RO-mounted into `/root/.claude/`. That's the format the
+Linux build of claude-code understands directly (same JSON that
+Keychain stores as the password value). No `claude /login` needed.
+The access token lives ~5 hours, which is plenty for any normal
+cook.
 
-**Option B (fallback для Linux-хостов или если Keychain недоступен):
-named volume + one-time login** — описан в разделах ниже. На
-Linux-хосте клиент claude-code и так держит креды в
-`~/.claude/.credentials.json`, можно bind-mount'ить напрямую (по
-сути option A без шага извлечения).
+**Option B (fallback for Linux hosts or when Keychain is
+unavailable): named volume + one-time login** — described in the
+sections below. On a Linux host the claude-code client already
+keeps creds in `~/.claude/.credentials.json`, so you can bind-mount
+directly (essentially option A without the extraction step).
 
-## Где у каждого CLI лежат креды
+## Where each CLI keeps its creds
 
 | CLI    | macOS host                                          | Linux container               |
 |--------|-----------------------------------------------------|-------------------------------|
 | codex  | `~/.codex/auth.json` (plain file)                   | `/root/.codex/auth.json`      |
 | gemini | `~/.gemini/oauth_creds.json` (plain file)           | `/root/.gemini/oauth_creds.json` |
-| claude | **macOS Keychain** (нельзя достать в контейнер)     | `~/.claude/` (plain files после `claude /login`) |
+| claude | **macOS Keychain** (can't pull into a container)    | `~/.claude/` (plain files after `claude /login`) |
 
-`codex` и `gemini` — простой bind-mount RO. С `claude` хитрее.
+`codex` and `gemini` — simple RO bind-mount. `claude` is trickier.
 
 ## codex — bind-mount
 
-В compose:
+In compose:
 
 ```yaml
 volumes:
   - ${HOME}/.codex/auth.json:/root/.codex/auth.json:ro
 ```
 
-CLI читает токен и обновляет его при необходимости — но т.к. mount
-RO, refresh не запишется обратно. На практике подписочный токен
-живёт долго, refresh внутри контейнера случается редко. Если вдруг
-токен протух — обнови на хосте (`codex` на хосте), новый файл
-автоматически виден в контейнере при следующем cook.
+The CLI reads the token and refreshes it as needed — but because
+the mount is RO, the refresh can't write back. In practice the
+subscription token lives long, refresh inside the container is
+rare. If the token does go stale — refresh on the host (`codex` on
+the host), the new file is automatically visible inside the
+container on the next cook.
 
 ## gemini — bind-mount
 
-Аналогично:
+Same idea:
 
 ```yaml
 volumes:
   - ${HOME}/.gemini/oauth_creds.json:/root/.gemini/oauth_creds.json:ro
 ```
 
-Те же оговорки про refresh.
+Same caveats about refresh.
 
 ## claude — named volume + one-time login
 
-На macOS токен `claude` лежит в Keychain — его нельзя bind-mount'ить
-в Linux-контейнер (другая ОС, другой формат). На Linux `claude`
-хранит токен в `~/.claude/` файлами, поэтому делаем разово
-аутентификацию **внутри** Linux-контейнера и сохраняем результат в
-named volume.
+On macOS the `claude` token sits in Keychain — you can't
+bind-mount it into a Linux container (different OS, different
+format). On Linux `claude` keeps the token in `~/.claude/` as
+files, so we do auth one time **inside** a Linux container and
+save the result into a named volume.
 
-### Первоначальная настройка (один раз)
+### Initial setup (one time)
 
 ```bash
-# 1. Собрать образ с claude-code:
+# 1. Build an image with claude-code:
 docker build -t mc-claude-base \
   -f templates/cook/participants/claude/Dockerfile.base .
 
-# 2. Залогиниться внутри контейнера, складывая creds в named volume:
+# 2. Log in inside the container, stashing creds into a named volume:
 docker run --rm -it \
   -v mc-claude-auth:/root/.claude \
   mc-claude-base \
   claude /login
 
-# claude напечатает URL → откроешь в браузере на хосте → авторизуешь.
-# Токен запишется в /root/.claude/ внутри контейнера, а это named
-# volume mc-claude-auth, переживёт удаление контейнера.
+# claude prints a URL → open it in the browser on the host → authorize.
+# The token is written to /root/.claude/ inside the container, which is
+# the named volume mc-claude-auth — it survives container removal.
 ```
 
-`Dockerfile.base` (минимальный):
+`Dockerfile.base` (minimal):
 
 ```Dockerfile
 FROM node:22-slim
@@ -94,24 +97,25 @@ RUN npm install -g @anthropic-ai/claude-code
 WORKDIR /work
 ```
 
-### При каждом cook
+### On every cook
 
-В compose-сервисе участника `claude`:
+In the participant's compose service `claude`:
 
 ```yaml
 volumes:
-  - mc-claude-auth:/root/.claude          # из named volume, RW
+  - mc-claude-auth:/root/.claude          # from named volume, RW
   - ./BRIEF.md:/work/BRIEF.md:ro
   - ./raw/:/work/raw/:ro
   - ./work/claude/out/:/work/out/:rw
 ```
 
-`mc-claude-auth` объявлен в `volumes:` секции compose как external
-named volume, чтобы не пересоздавался каждым `down -v`.
+`mc-claude-auth` is declared in the `volumes:` section of compose
+as an external named volume so it doesn't get recreated by each
+`down -v`.
 
-### Когда токен протух
+### When the token expires
 
-Перезапусти one-time login:
+Re-run the one-time login:
 
 ```bash
 docker run --rm -it \
@@ -119,39 +123,40 @@ docker run --rm -it \
   mc-claude-base claude /login
 ```
 
-Симптом: cook запускается, в логах `claude` видишь "Please run
+Symptom: cook launches, in `claude` logs you see "Please run
 /login" / "Unauthenticated".
 
-## Изоляция: почему мы не передаём API-ключи
+## Isolation: why we don't pass API keys
 
-- Подписки уже есть, ключи стоят дополнительных $$.
-- API-ключи — длинные секреты, которые легко утекают через
-  `docker history`, `--env`, или скриншоты. OAuth-токены в
-  bind-mount'ах протекают только если кто-то ходит в `~/.codex/`
-  пользователя — это уже совсем другой класс инцидента.
-- Мы повторяем поведение arena, где это уже было обкатано три
-  ночи подряд.
+- Subscriptions are already paid for, keys cost extra $$.
+- API keys are long-lived secrets that leak easily through
+  `docker history`, `--env`, or screenshots. OAuth tokens in
+  bind-mounts only leak if someone walks into the user's
+  `~/.codex/` — that's a completely different class of incident.
+- We mirror arena's behavior, which has been battle-tested over
+  three nights.
 
-## Сетевая часть auth
+## Network side of auth
 
-Контейнерам нужен egress наружу к auth-доменам и API:
+Containers need egress out to auth domains and APIs:
 
 - claude: `api.anthropic.com`, `console.anthropic.com`
 - codex: `api.openai.com`, `auth.openai.com`, `chatgpt.com`
 - gemini: `generativelanguage.googleapis.com`,
   `oauth2.googleapis.com`, `accounts.google.com`
 
-Для arena-style allowlist'а можно поднять forward-proxy на
-`llm-egress` сети с фильтром по SNI. v0.1 просто разрешает egress
-на bridge-сети — за счёт того, что в контейнере нет ничего, что
-могло бы экстра-фильтрацию обойти. Если задача чувствительная —
-ставь explicit proxy в `cooks/<task>/compose.override.yaml`.
+For an arena-style allowlist you can stand up a forward-proxy on
+the `llm-egress` network with SNI filtering. v0.1 just permits
+egress on the bridge network — relying on the fact that inside
+the container there's nothing that could bypass extra filtering.
+If the task is sensitive — drop an explicit proxy into
+`cooks/<task>/compose.override.yaml`.
 
-## Anti-self-judge при containerized auth
+## Anti-self-judge with containerized auth
 
-Раньше (arena, host-mode) anti-self-judge был проверкой
-"flavor-match". Сейчас, когда судья — отдельный контейнер с теми же
-кредами, что у участника той же flavor, это всё ещё работает: судья
-видит только анонимизированные `submissions/{A,B,C}/` и не имеет
-доступа к участникам. Но bias по стилю остаётся. Если хочешь жёстче
-— подними двух судей разной flavor.
+Previously (arena, host-mode) anti-self-judge was a "flavor-match"
+check. Now, when the judge is a separate container with the same
+creds as the participant of the same flavor, it still works: the
+judge only sees anonymized `submissions/{A,B,C}/` and has no
+access to participants. But style bias remains. If you want it
+stricter — bring up two judges of different flavors.

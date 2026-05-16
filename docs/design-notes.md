@@ -1,35 +1,35 @@
-# Design notes — отложенные идеи
+# Design notes — deferred ideas
 
-Тут лежат соображения по фичам, которые **не делаем сейчас**, но
-не хотим потерять контекст. Когда дойдут руки — берём отсюда
-готовый каркас trade-off'ов вместо того, чтобы передумывать с нуля.
+This is where considerations for features we're **not building now** live,
+so we don't lose the context. When we eventually get to one, we pick up
+the trade-offs from here instead of rederiving them from scratch.
 
-Соответствующие пункты живут в `docs/todo.md` (статус и приоритет),
-а здесь — почему именно так, какие альтернативы рассматривались,
-что сломается на простом пути.
+The matching entries live in `docs/todo.md` (status and priority); here
+it's why-it's-shaped-this-way, what alternatives were considered, and
+what breaks on the easy path.
 
 ---
 
-## Multi-account creds (профили)
+## Multi-account creds (profiles)
 
-**Почему отложено.** MVP покрывает 95% кейсов: один пользователь —
-один аккаунт на каждый flavor. Профили нужны для (а) разделения
-личного/рабочего, (б) vendor-benchmark под разными подписками,
-(в) dedicated judging account.
+**Why deferred.** MVP covers 95% of cases: one user — one account per
+flavor. Profiles are needed for (a) separating personal/work, (b)
+vendor benchmarks under different subscriptions, (c) a dedicated
+judging account.
 
-**Текущее состояние.** `creds.py` хардкодит источники:
+**Current state.** `creds.py` hardcodes the sources:
 
 - claude (macOS): Keychain entry `"Claude Code-credentials"`.
 - claude (Linux): `~/.claude/.credentials.json`.
 - codex: `~/.codex/auth.json`.
 - gemini: `~/.gemini/oauth_creds.json` + `settings.json`.
 
-Snapshot читает источник и кладёт в `cooks/<task>/.auth/<flavor>/`.
+Snapshot reads the source and drops it into `cooks/<task>/.auth/<flavor>/`.
 
-**Дизайн.**
+**Design.**
 
-1. Поле `profile:` в brief.yaml на участнике/судье. Default
-   `"default"` ⇒ текущее поведение.
+1. A `profile:` field in brief.yaml on each participant/judge. Default
+   `"default"` ⇒ current behavior.
    ```yaml
    participants:
      - name: claude-work
@@ -39,124 +39,122 @@ Snapshot читает источник и кладёт в `cooks/<task>/.auth/<f
        flavor: claude
        profile: personal
    ```
-2. Хранилище: `~/.multicooker/profiles/<profile>/<flavor>/` —
-   filesystem, не Keychain. Плоская структура, явное копирование.
-3. `creds.py:snapshot_for_profile(flavor, profile)` — если
-   `profile == "default"`, текущая логика. Иначе читает
+2. Storage: `~/.multicooker/profiles/<profile>/<flavor>/` —
+   filesystem, not Keychain. Flat structure, explicit copies.
+3. `creds.py:snapshot_for_profile(flavor, profile)` — if
+   `profile == "default"`, current logic. Otherwise read
    `~/.multicooker/profiles/<profile>/<flavor>/`.
-4. **Login wrapper** — самая мутная часть. `multicooker login
-   <flavor> --profile <name>` запускает CLI в одноразовом
-   контейнере с пустым `HOME`, юзер делает OAuth интерактивно,
-   потом снимок `$HOME/.<cli>/` копируется в
+4. **Login wrapper** — the murkiest part. `multicooker login
+   <flavor> --profile <name>` runs the CLI in a one-shot container
+   with an empty `HOME`, the user does OAuth interactively, then a
+   snapshot of `$HOME/.<cli>/` is copied into
    `~/.multicooker/profiles/<name>/<flavor>/`.
-   - **claude — особый случай.** На macOS он пишет в Keychain, не
-     в файл. В контейнере он падает в `~/.claude/.credentials.json`
-     (Linux fallback). Это **то, что нам нужно** — мы как раз
-     хотим файловый артефакт. Но это означает, что для профилей
-     у пользователя получается линукс-стилевой `claude` логин,
-     не интегрированный с системным Keychain. Документировать.
-5. `doctor` валидирует существование `~/.multicooker/profiles/<p>/<f>/`
-   для каждого упомянутого профиля, прежде чем cook.
+   - **claude — special case.** On macOS it writes to the Keychain, not
+     a file. Inside the container it falls back to `~/.claude/.credentials.json`
+     (the Linux fallback). That's **what we want** — we explicitly want
+     a file artifact. But it means that for profiles the user gets a
+     linux-style `claude` login that's not integrated with the system
+     Keychain. Worth documenting.
+5. `doctor` validates that `~/.multicooker/profiles/<p>/<f>/` exists
+   for every referenced profile before cook.
 
-**Что сломается на простом пути.** Если просто добавить `profile:`
-без login-wrapper'а, юзеру придётся вручную копировать
-`~/.codex/auth.json` в `~/.multicooker/profiles/work/codex/auth.json`
-и т.п. Это работает, но плохой UX. Login-wrapper — основной труд.
+**What breaks on the easy path.** If you just add `profile:` without a
+login wrapper, the user has to manually copy `~/.codex/auth.json` into
+`~/.multicooker/profiles/work/codex/auth.json` etc. It works, but it's
+bad UX. The login wrapper is the bulk of the work.
 
-**Скоуп.** Две сессии. Можно делить:
-- сессия 1: `profile:` поле + ручное хранилище + `doctor` checks.
-- сессия 2: `multicooker login --profile`.
+**Scope.** Two sessions. Splittable:
+- session 1: `profile:` field + manual storage + `doctor` checks.
+- session 2: `multicooker login --profile`.
 
 ---
 
 ## Replayable traces — full version
 
-**Лайт сделан.** `trace.json` per-cell + `multicooker rejudge`. Этого
-достаточно для пересудить тот же snapshot с новой рубрикой без
-повторного cook'а.
+**Lite version is done.** Per-cell `trace.json` + `multicooker rejudge`.
+That's enough to re-judge the same snapshot with a new rubric without
+re-cooking.
 
-**Что не сделано (full).** Structured trace tool-call'ов модели:
-prompt → tool_calls[] → tool_results[] → final output. Нужно
-для:
-- replay через **другого** судью без оригинального CLI;
-- diff'ать trace'ы между моделями (claude vs codex на одной задаче);
-- ground truth для regression-тестов на самих CLI.
+**What's not done (full).** Structured traces of the model's tool calls:
+prompt → tool_calls[] → tool_results[] → final output. Needed for:
+- replay through **a different** judge without the original CLI;
+- diffing traces between models (claude vs codex on the same task);
+- ground truth for regression tests on the CLIs themselves.
 
-**Почему трудно.** Текущие argv (`--print`, `exec`, `-p`) не дают
-structured output. Существуют режимы:
+**Why it's hard.** The current argv (`--print`, `exec`, `-p`) doesn't
+produce structured output. Available modes:
 
-- claude: `--output-format stream-json` — даёт JSONL
-  с tool calls/results.
-- codex: `exec` имеет `--json` (стрим event'ов).
-- gemini: на момент написания нет structured режима.
+- claude: `--output-format stream-json` — produces JSONL with tool
+  calls/results.
+- codex: `exec` has `--json` (event stream).
+- gemini: at the time of writing, no structured mode.
 
-То есть переход на structured trace ломает gemini support, либо
-требует двух режимов: structured где есть, текстовый дамп где нет.
+So switching to structured traces either breaks gemini support, or
+requires two modes: structured where available, text dump where not.
 
-**Прагматика.** Если когда-нибудь делать — стартовать с claude-only
-(`--output-format stream-json`) и дамп остальных как stdout-blob.
-Рядом с `out/` положить `trace.jsonl`.
+**Pragmatics.** If we ever do it — start with claude-only
+(`--output-format stream-json`) and dump the others as stdout blobs.
+Drop `trace.jsonl` next to `out/`.
 
-**Скоуп.** Минимум одна сессия на claude. Полный multi-flavor —
-ещё одна. Не делаем, пока **конкретный** use-case не возник.
+**Scope.** At least one session for claude. Full multi-flavor — another.
+Not happening until a **concrete** use case shows up.
 
 ---
 
 ## Registry / versioned task specs
 
-**Идея.** `~/.multicooker/registry/<spec-name>@<version>/` —
-шаблон арены (BRIEF.md, JUDGE_BRIEF.md, brief.yaml.template,
-raw/). `multicooker new --from-spec <spec>@<v>` материализует.
+**Idea.** `~/.multicooker/registry/<spec-name>@<version>/` — an arena
+template (BRIEF.md, JUDGE_BRIEF.md, brief.yaml.template, raw/).
+`multicooker new --from-spec <spec>@<v>` materializes it.
 
-**Зачем.** Стандартные арены: `arc-style`, `code-review-pr@1.2`,
-`pr-summary@1.0`. Шарятся между людьми/проектами, версионируются,
-прогресс на одном spec'е сравним через время.
+**Why.** Standard arenas: `arc-style`, `code-review-pr@1.2`,
+`pr-summary@1.0`. Shared between people/projects, versioned, progress
+on a given spec is comparable over time.
 
-**Почему НЕ сейчас.** Текущая база — один пользователь, нет нужды
-в registry. Плоский git-clone «task-pack» репо ничем не хуже до
-тех пор, пока пользователей единицы. Делать registry до спроса —
+**Why NOT now.** Current user base is one person; no registry needed. A
+flat git-cloned "task-pack" repo is just as good as long as users number
+in the single digits. Building a registry before demand exists is
 overengineering.
 
-**Если когда-нибудь.**
-- Версионирование: semver, immutable. Breaking change в schema
-  brief.yaml ⇒ major bump.
-- Конфликт registry ↔ user override: registry даёт template,
-  cook-specific brief.yaml поверх него.
+**If we ever do it.**
+- Versioning: semver, immutable. Breaking change in brief.yaml schema
+  ⇒ major bump.
+- Registry ↔ user override conflict: the registry provides a template,
+  the cook-specific brief.yaml overrides it.
 - Distribution: git-based registry (`multicooker pull <git-url>` →
-  локальный clone). Не делать центральный server.
-- Required raw materials: spec может объявить `raw/` requirements
-  (file globs + checksums); `new --from-spec` падает если в
-  локальной папке нужных raw нет.
+  local clone). No central server.
+- Required raw materials: a spec can declare `raw/` requirements
+  (file globs + checksums); `new --from-spec` fails if the local
+  folder lacks the required raw files.
 
-**Скоуп.** Одна сессия на minimal pull-from-git, ещё одна на
-versioning + validation. Триггер: 3+ юзера попросили.
+**Scope.** One session for minimal pull-from-git, another for
+versioning + validation. Trigger: 3+ users asking.
 
 ---
 
 ## Sandbox-providers / k8s
 
-**Идея.** Абстракция `Runner` (cook + judge) → интерфейс. Default
-импл — Docker Compose (как сейчас). Альтернативный — k8s pod
-runner.
+**Idea.** A `Runner` abstraction (cook + judge) → interface. Default
+impl — Docker Compose (as today). Alternative — a k8s pod runner.
 
-**Зачем.** Team setup; long-running benchmarks (10+ cooks
-одновременно); cooks с heavy compute (нужен GPU node).
+**Why.** Team setup; long-running benchmarks (10+ cooks at once); cooks
+with heavy compute (need a GPU node).
 
-**Почему НЕ сейчас.**
-- Текущий single-machine setup тянет до десятков параллельных
-  cook'ов. Bottleneck не там.
-- k8s-impl большой: NetworkPolicy для воссоздания bridge-net
-  изоляции, Secret для creds (и refresh внутри pod'а — нетривиально
-  для OAuth), PVC для `out/`, Job-оркестрация замест Compose.
-- Подписочные creds в k8s — отдельная боль. OAuth refresh обычно
-  пишет обратно в `~/.<cli>/`; в k8s это writable EmptyDir на pod,
-  и refresh теряется при удалении pod'а. Нужно либо persistent
-  PVC per-profile, либо специальный auth sidecar.
+**Why NOT now.**
+- The current single-machine setup scales to dozens of parallel cooks.
+  The bottleneck isn't here.
+- The k8s impl is large: NetworkPolicy to reproduce bridge-net
+  isolation, Secret for creds (and refresh inside the pod — non-trivial
+  for OAuth), PVC for `out/`, Job orchestration instead of Compose.
+- Subscription creds in k8s — a separate pain. OAuth refresh usually
+  writes back to `~/.<cli>/`; in k8s that's a writable EmptyDir on the
+  pod, and the refresh is lost when the pod is deleted. You'd need
+  either a persistent per-profile PVC, or a dedicated auth sidecar.
 
-**Прагматика.** До k8s-impl рефакторнуть `compose_runner.py` за
-интерфейс `Runner` (с одним Compose-impl) полезно как
-internal-cleanup. Но без второй реализации — это вкус
-overengineering'а.
+**Pragmatics.** Ahead of a k8s impl, refactoring `compose_runner.py`
+behind a `Runner` interface (with a single Compose impl) is useful as
+internal cleanup. But without a second implementation it has the smell
+of overengineering.
 
-**Скоуп.** Минимум 2 сессии: рефакторинг + k8s-impl. Триггер:
-пользователь с k8s-кластером и рекуррентной задачей benchmark.
+**Scope.** At least 2 sessions: refactor + k8s impl. Trigger: a user
+with a k8s cluster and a recurring benchmark task.

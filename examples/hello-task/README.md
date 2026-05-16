@@ -1,17 +1,17 @@
 # hello-task — sanitized smoke example
 
-Тривиальная задача (написать хайку про reproxy) на flavor `dummy`,
-без подписочных кредов. Гоняется локально за ~10 секунд и существует
-для двух целей:
+A trivial task (write a haiku about reproxy) on the `dummy` flavor, with
+no subscription creds. Runs locally in ~10 seconds and exists for two
+reasons:
 
-1. Показать форму cook'а (BRIEF.md / JUDGE_BRIEF.md / brief.yaml /
-   raw/) на минимальном осмысленном примере.
-2. Дать готовый smoke-сценарий, не требующий доступа к LLM.
+1. To show the shape of a cook (BRIEF.md / JUDGE_BRIEF.md / brief.yaml /
+   raw/) on a minimal but meaningful example.
+2. To provide a ready-made smoke scenario that doesn't need LLM access.
 
-## Запуск
+## Run
 
 ```bash
-# Скопируй пример в свой cooks/ как обычный cook:
+# Copy the example into your cooks/ as a regular cook:
 multicooker new hello-smoke --participants a=dummy,b=dummy,c=dummy
 cp examples/hello-task/BRIEF.md       cooks/$(date +%y%m%d)-hello-smoke/
 cp examples/hello-task/JUDGE_BRIEF.md cooks/$(date +%y%m%d)-hello-smoke/
@@ -22,12 +22,11 @@ multicooker judge  $(date +%y%m%d)-hello-smoke
 multicooker report $(date +%y%m%d)-hello-smoke
 ```
 
-`dummy` flavor:
+The `dummy` flavor:
 
-- участник копирует `PROMPT.txt` → `out/RESULT.md` (без обращений к
-  моделям);
-- судья ставит фиксированные оценки и пишет review с `A/B/C`-метками.
+- participant copies `PROMPT.txt` → `out/RESULT.md` (no model calls);
+- judge assigns fixed scores and writes a review with `A/B/C` labels.
 
-Хочется попробовать на настоящих агентах? Поменяй `flavor: dummy` в
-`brief.yaml` на `claude`/`codex`/`gemini` — в остальном пример
-устроен ровно как «боевой» cook.
+Want to try it on real agents? Change `flavor: dummy` in `brief.yaml` to
+`claude`/`codex`/`gemini` — otherwise the example is shaped exactly like
+a "real" cook.
