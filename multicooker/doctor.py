@@ -37,12 +37,12 @@ def _check_docker() -> tuple[bool, str]:
         out = subprocess.run(["docker", "version", "--format", "{{.Server.Version}}"],
                              capture_output=True, text=True, timeout=5)
     except FileNotFoundError:
-        return False, "`docker` not on PATH. Install Docker Desktop or colima."
+        return False, "`docker` not on PATH. Install OrbStack (mac, recommended), Docker Desktop, or colima."
     except subprocess.TimeoutExpired:
         return False, "`docker version` hung — daemon not responding. Start Docker."
     if out.returncode != 0:
         msg = (out.stderr or out.stdout).strip().splitlines()[-1] if (out.stderr or out.stdout) else "unknown"
-        return False, f"docker daemon unreachable: {msg}. Start Docker Desktop / colima."
+        return False, f"docker daemon unreachable: {msg}. Start OrbStack / Docker Desktop / colima."
     return True, f"docker server v{out.stdout.strip()}"
 
 

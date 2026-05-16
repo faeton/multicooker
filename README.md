@@ -102,7 +102,11 @@ pip install -e .
 
 Requirements:
 
-- macOS or Linux host with Docker Desktop / colima running.
+- macOS or Linux host with a running docker daemon. On macOS,
+  **[OrbStack](https://orbstack.dev/)** is the recommended runtime
+  — noticeably faster startup, lower idle CPU, and friendlier
+  resource handling than Docker Desktop. Docker Desktop and colima
+  also work.
 - Python 3.10+.
 - At least one of these CLIs installed and logged in: `claude`
   (`claude /login`), `codex` (`codex` to log in), `gemini`
@@ -337,7 +341,8 @@ The long version: [`HOWTO.md`](HOWTO.md). Internals:
 
 ## Status
 
-`v0.2`. Tested on macOS + Docker Desktop. Linux should work;
+`v0.2`. Tested on macOS with OrbStack and Docker Desktop. Linux
+should work;
 `claude` creds on darwin come from Keychain, on Linux from
 `~/.claude/.credentials.json`.
 
