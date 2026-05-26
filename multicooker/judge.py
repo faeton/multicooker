@@ -23,6 +23,8 @@ import json
 import random
 import secrets
 import shutil
+import threading
+import time
 from pathlib import Path
 
 import yaml
@@ -123,6 +125,88 @@ def _setup_judge_workdir(cook_dir: Path, judge_name: str,
     return work
 
 
+def _run_judge(cook_dir: Path, project: str, judge_cfg: dict,
+               judge_in: Path, mapping: dict[str, str],
+               timeout_s: int, results: dict,
+               lock: threading.Lock) -> None:
+    jname = judge_cfg["name"]
+    flavor = judge_cfg.get("flavor", jname)
+    eff_timeout = int(judge_cfg.get("timeout_s", timeout_s))
+    print(f"[judge] running {jname} ({flavor}, timeout {eff_timeout}s)...",
+          flush=True)
+    work = _setup_judge_workdir(cook_dir, jname, judge_in, deterministic=True)
+    log_dir = cook_dir / "judging" / "_logs" / jname
+    (work / "PROMPT.txt").write_text(JUDGE_PROMPT_TEMPLATE)
+    service = f"judge-{jname}"
+    try:
+        res = compose_runner.run_cell(
+            cook_dir=cook_dir, project=project, service=service,
+            flavor=flavor, log_dir=log_dir, timeout_s=eff_timeout,
+        )
+    except Exception as e:                                                  # noqa: BLE001
+        print(f"[judge] {jname}: failed to launch: {e}", flush=True)
+        with lock:
+            results[jname] = {"ok": False, "reason": f"launch failed: {e}"}
+        return
+    outbox = cook_dir / "judging" / jname
+    ok = _collect_scores(work, outbox)
+    if not ok:
+        print(f"[judge] {jname}: did NOT produce scores.json "
+              f"(exit={res.exit_code}). See {log_dir}", flush=True)
+        with lock:
+            results[jname] = {"ok": False, "reason": "no scores.json"}
+        return
+    try:
+        scores = json.loads((outbox / "scores.json").read_text())
+    except json.JSONDecodeError as e:
+        print(f"[judge] {jname}: scores.json invalid: {e}", flush=True)
+        with lock:
+            results[jname] = {"ok": False, "reason": f"invalid json: {e}"}
+        return
+    scores = _normalize_scores(scores)
+    deanon = {mapping.get(k, k): v for k, v in scores.items()}
+    (outbox / "scores_deanon.json").write_text(json.dumps(deanon, indent=2))
+    print(f"[judge] {jname}: ok, {len(deanon)} participants scored", flush=True)
+    with lock:
+        results[jname] = {"ok": True, "count": len(deanon)}
+
+
+def _normalize_scores(scores: dict) -> dict:
+    """Accept either canonical format or common LLM variants, return canonical.
+
+    Canonical: {"<label>": {"dimensions": {"<dim>": int, ...}, "total": int?}}
+
+    Variants handled:
+    - Top-level {"scores": {...}} wrapper (when JUDGE_BRIEF.md shows that shape).
+    - Flat per-label {"<dim>": int, ...} with no "dimensions" key.
+    """
+    # Unwrap {"scores": {...}} if it's the sole top-level key.
+    if (
+        isinstance(scores, dict)
+        and len(scores) == 1
+        and "scores" in scores
+        and isinstance(scores["scores"], dict)
+    ):
+        scores = scores["scores"]
+
+    normalized: dict[str, dict] = {}
+    for label, entry in scores.items():
+        if not isinstance(entry, dict):
+            continue
+        if "dimensions" in entry and isinstance(entry["dimensions"], dict):
+            normalized[label] = entry
+            continue
+        # Flat: lift int-valued keys into a "dimensions" block.
+        total = entry.get("total")
+        dims = {k: v for k, v in entry.items()
+                if k != "total" and isinstance(v, (int, float))}
+        out: dict = {"dimensions": dims}
+        if total is not None:
+            out["total"] = total
+        normalized[label] = out
+    return normalized
+
+
 def _collect_scores(work: Path, judge_outbox: Path) -> bool:
     src_outbox = work / "outbox"
     if not src_outbox.exists():
@@ -189,12 +273,10 @@ def judge(name: str, root: Path,
         print(f"[judge] base image build failed: {e}", flush=True)
         return 2
 
-    any_score = False
+    # Anti-self-judging warnings (anonymization mitigates; this only warns).
     for j in judges_cfg:
         jname = j["name"]
         flavor = j.get("flavor", jname)
-        # Anti-self-judging: warn (not skip). Anonymization already mitigates
-        # bias; for strict isolation add a different-flavor judge in brief.yaml.
         same_flavor_participants = [p["name"] for p in participants
                                     if p.get("flavor", p["name"]) == flavor]
         if same_flavor_participants:
@@ -202,43 +284,37 @@ def judge(name: str, root: Path,
                   f"participants {same_flavor_participants}. Anonymization is on, "
                   f"but for full anti-bias add a different-flavor judge.",
                   flush=True)
-        eff_timeout = int(j.get("timeout_s", timeout_s))
-        print(f"[judge] running {jname} ({flavor}, timeout {eff_timeout}s)...",
-              flush=True)
-        work = _setup_judge_workdir(cook_dir, jname, judge_in, deterministic=True)
-        log_dir = cook_dir / "judging" / "_logs" / jname
-        (work / "PROMPT.txt").write_text(JUDGE_PROMPT_TEMPLATE)
-        service = f"judge-{jname}"
-        try:
-            compose_runner.build_images(cook_dir, project, [service])
-            res = compose_runner.run_cell(
-                cook_dir=cook_dir, project=project, service=service,
-                flavor=flavor, log_dir=log_dir, timeout_s=eff_timeout,
-            )
-        except Exception as e:                                              # noqa: BLE001
-            print(f"[judge] {jname}: failed to launch: {e}", flush=True)
-            continue
-        outbox = cook_dir / "judging" / jname
-        ok = _collect_scores(work, outbox)
-        if not ok:
-            print(f"[judge] {jname}: did NOT produce scores.json "
-                  f"(exit={res.exit_code}). See {log_dir}", flush=True)
-            continue
-        try:
-            scores = json.loads((outbox / "scores.json").read_text())
-        except json.JSONDecodeError as e:
-            print(f"[judge] {jname}: scores.json invalid: {e}", flush=True)
-            continue
-        deanon = {mapping.get(k, k): v for k, v in scores.items()}
-        (outbox / "scores_deanon.json").write_text(json.dumps(deanon, indent=2))
-        any_score = True
-        print(f"[judge] {jname}: ok, {len(deanon)} participants scored", flush=True)
+
+    # Build all judge images upfront so threaded runs don't serialize on docker build.
+    services = [f"judge-{j['name']}" for j in judges_cfg]
+    try:
+        compose_runner.build_images(cook_dir, project, services)
+    except Exception as e:                                                  # noqa: BLE001
+        print(f"[judge] build failed: {e}", flush=True)
+        return 2
+
+    # Run judges in parallel, 2-sec stagger like cook (auth refresh storms).
+    results: dict[str, dict] = {}
+    lock = threading.Lock()
+    threads: list[threading.Thread] = []
+    for j in judges_cfg:
+        t = threading.Thread(
+            target=_run_judge,
+            args=(cook_dir, project, j, judge_in, mapping, timeout_s, results, lock),
+            daemon=True,
+        )
+        t.start()
+        threads.append(t)
+        time.sleep(2)
+    for t in threads:
+        t.join()
 
     try:
         compose_runner.teardown(cook_dir, project)
     except Exception as e:                                                  # noqa: BLE001
         print(f"[judge] teardown warning: {e}", flush=True)
 
+    any_score = any(r.get("ok") for r in results.values())
     if not any_score:
         print("[judge] no judges produced scores; nothing to report", flush=True)
         return 1
