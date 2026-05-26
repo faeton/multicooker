@@ -24,6 +24,33 @@ def _csv(s: str | None) -> list[str] | None:
     return [x.strip() for x in s.split(",") if x.strip()] if s else None
 
 
+def _resolve_root(root_arg: str) -> Path:
+    """Resolve --root to an absolute path so the CLI works from any cwd.
+
+    Try cwd first, then walk up looking for a directory of that name
+    (handles invocation from a subdirectory of the repo), then fall back
+    to a path resolved relative to the multicooker source location
+    (handles invocation from anywhere on the machine). Absolute paths
+    pass through untouched.
+    """
+    root_path = Path(root_arg)
+    if root_path.is_absolute():
+        return root_path
+    cwd = Path.cwd()
+    for parent in [cwd, *cwd.parents]:
+        candidate = parent / root_path
+        if candidate.is_dir():
+            return candidate.resolve()
+    # Fall back to the multicooker source root (parent of this package).
+    pkg_root = Path(__file__).resolve().parent.parent
+    candidate = pkg_root / root_path
+    if candidate.is_dir():
+        return candidate
+    # Not found anywhere; return cwd-relative so the downstream error
+    # message names the path the user asked for.
+    return (cwd / root_path).resolve()
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
         prog="multicooker",
@@ -135,6 +162,8 @@ def main(argv: list[str] | None = None) -> int:
                      help="Don't remove cooks/<task>/.auth/")
 
     args = p.parse_args(argv)
+    if hasattr(args, "root"):
+        args.root = str(_resolve_root(args.root))
 
     if args.cmd == "doctor":
         return doctor(
