@@ -42,7 +42,7 @@ What multicooker protects against, what it doesn't, and why.
 | Stealing the participant's own creds | A compromised CLI binary has access to the auth files mounted for it. The cost of headless subscription auth. Mitigation: don't run multicooker with CLIs you don't trust. |
 | Network-level data exfiltration | Egress is open. If your `raw/` is sensitive, see "Sensitive raw materials" below. |
 | Accidentally including `.env`, secrets in `raw/` | You control `raw/`. We mount it RO; we don't scan it. |
-| Re-using a leaked OAuth token | If your subscription creds leak, rotate them with the upstream provider (`claude /login`, `codex` re-auth, `gemini` re-auth). |
+| Re-using a leaked OAuth token | If your subscription creds leak, rotate them with the upstream provider (`claude /login`, `codex` re-auth, `gemini` re-auth, `grok login`). |
 | Judge collusion / reward hacking by the model itself | Out of scope — this is an alignment problem, not a tooling one. |
 
 ## Sensitive raw materials
@@ -64,7 +64,8 @@ fetches." If that's not acceptable:
   - `claude` (Linux): `~/.claude/.credentials.json`.
   - `codex`: `~/.codex/auth.json`.
   - `gemini`: `~/.gemini/oauth_creds.json` + `settings.json` etc.
-- Per-cook copy: `cooks/<task>/.auth/{claude,codex,gemini}/` —
+  - `grok`: `~/.grok/auth.json`.
+- Per-cook copy: `cooks/<task>/.auth/{claude,codex,gemini,grok}/` —
   mode `0600`, written by `multicooker.creds.snapshot()`, mounted
   RO into the matching participant only.
 - Refresh: snapshot re-runs at every cook/refine/judge — token
@@ -101,10 +102,10 @@ This is **by design and not mitigated**. Reasons:
 What you can do:
 
 - **Don't run multicooker against CLIs you don't trust.** Treat the
-  three official CLIs as you'd treat any other tool you log into.
+  four official CLIs as you'd treat any other tool you log into.
 - **Rotate aggressively if a leak is suspected:** `claude /login`,
-  re-auth `codex` and `gemini` from the host. The next snapshot
-  picks up the new tokens.
+  re-auth `codex` and `gemini`, `grok login` from the host. The next
+  snapshot picks up the new tokens.
 - **For high-stakes raw data**, drop a per-cook
   `compose.override.yaml` with `network_mode: none` or a strict
   allowlist proxy — at the cost of breaking package fetches.

@@ -1,4 +1,4 @@
-"""Snapshot subscription creds for the three CLIs into a per-cook .auth/ dir.
+"""Snapshot subscription creds for the four CLIs into a per-cook .auth/ dir.
 
 Why: docker-mode runs CLIs in Linux containers. Each CLI looks for creds
 in a known on-disk location:
@@ -6,6 +6,7 @@ in a known on-disk location:
   - codex:  ~/.codex/auth.json                   (plain file, OS-agnostic)
   - gemini: ~/.gemini/oauth_creds.json           (plain file, OS-agnostic)
   - claude: ~/.claude/.credentials.json          (Linux), or macOS Keychain
+  - grok:   ~/.grok/auth.json                    (plain file, OS-agnostic)
 
 Approach: for each cook, build cooks/<task>/.auth/{claude,codex,gemini}/
 with the right files and mode 0600, then bind-mount RO into containers.
@@ -68,6 +69,18 @@ def _snapshot_gemini(into: Path) -> None:
             (dst / f).chmod(0o600)
 
 
+def _snapshot_grok(into: Path) -> None:
+    src = Path.home() / ".grok" / "auth.json"
+    if not src.exists():
+        raise CredsError(
+            f"grok creds missing at {src}. Run `grok login` on the host first."
+        )
+    dst = into / "grok" / "auth.json"
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, dst)
+    dst.chmod(0o600)
+
+
 def _snapshot_claude_macos(into: Path) -> None:
     """Extract Claude Code creds JSON from macOS Keychain."""
     try:
@@ -126,6 +139,8 @@ def snapshot(cook_dir: Path, flavors: list[str]) -> Path:
                 _snapshot_codex(auth_root)
             elif f == "gemini":
                 _snapshot_gemini(auth_root)
+            elif f == "grok":
+                _snapshot_grok(auth_root)
             elif f == "claude":
                 if sys.platform == "darwin":
                     _snapshot_claude_macos(auth_root)

@@ -27,7 +27,7 @@ from typing import Any
 
 # Flavors known to creds.py. Adding a flavor = adding here AND in creds.py
 # AND providing a Dockerfile under templates/cook/participants/<flavor>/.
-KNOWN_FLAVORS = frozenset({"claude", "codex", "gemini", "dummy"})
+KNOWN_FLAVORS = frozenset({"claude", "codex", "gemini", "grok", "dummy"})
 
 
 def _is_int_like(x: Any) -> bool:

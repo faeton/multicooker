@@ -63,7 +63,7 @@ def test_unknown_flavor_caught() -> None:
 
 def test_known_flavors_complete() -> None:
     # If someone adds a new flavor to creds.py, schema must follow.
-    assert KNOWN_FLAVORS == {"claude", "codex", "gemini", "dummy"}
+    assert KNOWN_FLAVORS == {"claude", "codex", "gemini", "grok", "dummy"}
 
 
 def test_duplicate_participant_name() -> None:

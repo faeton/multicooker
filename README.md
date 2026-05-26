@@ -1,14 +1,14 @@
 # multicooker
 
-Run several LLM agents (`claude`, `codex`, `gemini`) on **the same
-task** in parallel — each in its own docker container with its own
-subscription auth — then have **other** LLM agents read the
-outputs blind (under `A` / `B` / `C` labels), score them against
-your rubric, and write reviews.
+Run several LLM agents (`claude`, `codex`, `gemini`, `grok`) on
+**the same task** in parallel — each in its own docker container
+with its own subscription auth — then have **other** LLM agents
+read the outputs blind (under `A` / `B` / `C` labels), score them
+against your rubric, and write reviews.
 
 You get a `leaderboard.md` plus a corpus of N divergent solutions
 to one brief. **No API bills**: it goes through your `Claude Pro`
-/ `ChatGPT Plus` / `Gemini Advanced` subscriptions.
+/ `ChatGPT Plus` / `Gemini Advanced` / `SuperGrok` subscriptions.
 
 > «multicooker»: one task, several dishes cook in parallel in
 > their own pots; you compare what came out of each.
@@ -110,7 +110,8 @@ Requirements:
 - Python 3.10+.
 - At least one of these CLIs installed and logged in: `claude`
   (`claude /login`), `codex` (`codex` to log in), `gemini`
-  (`gemini` to log in). Only the flavors you actually want to run.
+  (`gemini` to log in), `grok` (`grok login`). Only the flavors
+  you actually want to run.
 
 Want to try the pipeline without subscription creds? There's a
 `dummy` flavor — see [`examples/hello-task`](examples/hello-task/).

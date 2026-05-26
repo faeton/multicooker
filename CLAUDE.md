@@ -1,10 +1,11 @@
 # multicooker — notes for agents
 
-multicooker runs several LLM agents (`claude` / `codex` / `gemini`)
-on **the same task** in parallel docker containers using their own
-subscription auth, then has **other** LLMs read the outputs blind
-and score them by a rubric you define. Output: a leaderboard plus
-a corpus of N divergent solutions to one underspecified brief.
+multicooker runs several LLM agents (`claude` / `codex` / `gemini`
+/ `grok`) on **the same task** in parallel docker containers using
+their own subscription auth, then has **other** LLMs read the
+outputs blind and score them by a rubric you define. Output: a
+leaderboard plus a corpus of N divergent solutions to one
+underspecified brief.
 
 ## Hard rules
 
@@ -41,9 +42,9 @@ multicooker new <name> --participants <list>   # → cooks/<YYMMDD-name>/
 ```
 
 `<list>` is comma-separated. Either `flavor` shorthand
-(`claude,codex,gemini` → participants named after their flavor) or
-explicit (`alice=claude,bob=claude,codex,gemini`). Per-participant
-model selection goes into `brief.yaml` (see below).
+(`claude,codex,gemini,grok` → participants named after their
+flavor) or explicit (`alice=claude,bob=claude,codex,gemini`).
+Per-participant model selection goes into `brief.yaml` (see below).
 
 Then fill in four pieces inside the new cook.
 

@@ -87,6 +87,12 @@ def _auth_volumes(flavor: str, cook_dir: Path) -> list[str]:
         return [f"{auth}/claude/:/home/node/.claude/:ro"]
     if flavor == "codex":
         return [f"{auth}/codex/auth.json:/home/node/.codex/auth.json:ro"]
+    if flavor == "grok":
+        # Single-file RO bind (codex pattern). Rest of /home/node/.grok/
+        # (bin/, bundled/, etc.) stays as the image baked it. Token refresh
+        # writes during a cook won't persist back to the snapshot, but cooks
+        # finish well within the ~6h token lifetime.
+        return [f"{auth}/grok/auth.json:/home/node/.grok/auth.json:ro"]
     if flavor == "gemini":
         # gemini needs settings.json + oauth_creds.json + a few small id files,
         # plus it writes a project registry to .gemini/projects.json at startup.

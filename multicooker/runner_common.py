@@ -55,6 +55,16 @@ _RL_PATTERNS = {
         re.compile(r"daily.*limit", re.I),
         re.compile(r"retry.after[: ]+(\d+)", re.I),
     ],
+    "grok": [
+        # Patterns inferred from xAI billing / cli-chat-proxy error surfaces.
+        # Real signatures will land once we have a rate-limited cook to study;
+        # until then these cover the obvious shapes (subscription gate, 429s).
+        re.compile(r"subscription.*required", re.I),
+        re.compile(r"rate.?limit", re.I),
+        re.compile(r"too many requests", re.I),
+        re.compile(r"quota.*(exceeded|exhausted)", re.I),
+        re.compile(r"retry.after[: ]+(\d+)", re.I),
+    ],
 }
 
 

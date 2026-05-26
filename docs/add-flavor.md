@@ -1,9 +1,9 @@
 # Adding a new flavor (CLI agent)
 
-Multicooker ships with `claude`, `codex`, `gemini`, and `dummy`. To add a
-new CLI agent (e.g. aider, cursor-cli, ollama-runner, a local binary) —
-follow this guide. ~10 minutes of copy-paste; most of the time will go
-into debugging your CLI's argv.
+Multicooker ships with `claude`, `codex`, `gemini`, `grok`, and `dummy`.
+To add a new CLI agent (e.g. aider, cursor-cli, ollama-runner, a local
+binary) — follow this guide. ~10 minutes of copy-paste; most of the time
+will go into debugging your CLI's argv.
 
 ## What to decide up front
 

@@ -30,9 +30,10 @@ directly (essentially option A without the extraction step).
 |--------|-----------------------------------------------------|-------------------------------|
 | codex  | `~/.codex/auth.json` (plain file)                   | `/root/.codex/auth.json`      |
 | gemini | `~/.gemini/oauth_creds.json` (plain file)           | `/root/.gemini/oauth_creds.json` |
+| grok   | `~/.grok/auth.json` (plain file)                    | `/home/node/.grok/auth.json`  |
 | claude | **macOS Keychain** (can't pull into a container)    | `~/.claude/` (plain files after `claude /login`) |
 
-`codex` and `gemini` — simple RO bind-mount. `claude` is trickier.
+`codex`, `gemini`, and `grok` — simple RO bind-mount. `claude` is trickier.
 
 ## codex — bind-mount
 
@@ -60,6 +61,21 @@ volumes:
 ```
 
 Same caveats about refresh.
+
+## grok — bind-mount
+
+Identical pattern to codex (OAuth oidc token in a single JSON file):
+
+```yaml
+volumes:
+  - ${HOME}/.grok/auth.json:/home/node/.grok/auth.json:ro
+```
+
+The bake-time install drops a static binary and bundled agents into
+`/home/node/.grok/` inside the image; the single-file bind only
+overlays `auth.json` on top, leaving the rest of the install intact.
+Grok's access token lives ~6 hours, comfortably longer than any cook.
+Refresh on the host (`grok` interactive once) to rotate.
 
 ## claude — named volume + one-time login
 
@@ -144,6 +160,8 @@ Containers need egress out to auth domains and APIs:
 - codex: `api.openai.com`, `auth.openai.com`, `chatgpt.com`
 - gemini: `generativelanguage.googleapis.com`,
   `oauth2.googleapis.com`, `accounts.google.com`
+- grok: `cli-chat-proxy.grok.com`, `auth.x.ai`, `accounts.x.ai`,
+  `x.ai` (installer + binary downloads, build-time only)
 
 For an arena-style allowlist you can stand up a forward-proxy on
 the `llm-egress` network with SNI filtering. v0.1 just permits
