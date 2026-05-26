@@ -27,7 +27,8 @@ cooks/my-task/
 ├── participants/        # Dockerfile per flavor (inherited from templates/)
 │   ├── claude/Dockerfile
 │   ├── codex/Dockerfile
-│   └── gemini/Dockerfile
+│   ├── gemini/Dockerfile
+│   └── grok/Dockerfile
 └── judge/               # judge Dockerfile (per flavor)
 ```
 

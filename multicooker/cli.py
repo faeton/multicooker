@@ -83,8 +83,8 @@ def main(argv: list[str] | None = None) -> int:
     pn = sub.add_parser("new", help="Scaffold a new cook (task) folder")
     pn.add_argument("name", help="Folder name under cooks/ (e.g. my-task)")
     pn.add_argument("--root", default="cooks", help="Parent folder (default: cooks/)")
-    pn.add_argument("--participants", default="claude,codex,gemini",
-                    help="Comma-separated list (default: claude,codex,gemini). "
+    pn.add_argument("--participants", default="claude,codex,gemini,grok",
+                    help="Comma-separated list (default: claude,codex,gemini,grok). "
                          "Each entry is a flavor; for multiple participants of "
                          "the same flavor use NAME=FLAVOR (e.g. claude-a=claude,claude-b=claude).")
 

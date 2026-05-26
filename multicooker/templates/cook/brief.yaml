@@ -13,9 +13,12 @@ participants:
   - name: gemini
     flavor: gemini
     # timeout_s: 2400   # example: give gemini extra headroom
+  - name: grok
+    flavor: grok
+  # Remove any flavor you don't have creds for (see docs/auth.md).
 
 judges:
-  # By default we use claude + gemini. Codex would also work, but if any
+  # By default we use claude + gemini. Codex/grok would also work, but if any
   # of these flavors also appear as participants the judge will skip itself
   # (anti-self-judging rule).
   - name: claude-judge

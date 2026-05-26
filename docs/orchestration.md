@@ -8,18 +8,18 @@ project so networks and volumes stay isolated between tasks.
 ```
               cooks/<task>/  (compose project: mc-<task>)
                │
-   ┌───────────┼───────────┬───────────┬───────────┐
-   ▼           ▼           ▼           ▼           ▼
-┌──────┐   ┌──────┐    ┌──────┐    ┌──────┐    ┌──────┐
-│claude│   │codex │    │gemini│    │judge1│    │judge2│
-└──┬───┘   └──┬───┘    └──┬───┘    └──┬───┘    └──┬───┘
-   │          │           │           │           │
-   ▼          ▼           ▼           ▼           ▼
- net-      net-         net-       net-        net-
- part-     part-        part-      judge-      judge-
- claude    codex        gemini     <name>      <name>
-   │          │           │           │           │
-   └──────────┴───────────┴───────────┴───────────┘
+   ┌───────────┬──────┴────┬───────────┬───────────┬───────────┐
+   ▼           ▼           ▼           ▼           ▼           ▼
+┌──────┐   ┌──────┐    ┌──────┐    ┌──────┐    ┌──────┐    ┌──────┐
+│claude│   │codex │    │gemini│    │ grok │    │judge1│    │judge2│
+└──┬───┘   └──┬───┘    └──┬───┘    └──┬───┘    └──┬───┘    └──┬───┘
+   │          │           │           │           │           │
+   ▼          ▼           ▼           ▼           ▼           ▼
+ net-      net-         net-        net-       net-        net-
+ part-     part-        part-       part-      judge-      judge-
+ claude    codex        gemini      grok       <name>      <name>
+   │          │           │           │           │           │
+   └──────────┴───────────┴───────────┴───────────┴───────────┘
                           │
                           ▼  egress to internet is open
                      (npm / pypi / github / LLM API)
@@ -79,6 +79,9 @@ codex exec --cd /work --skip-git-repo-check \
 
 # gemini
 gemini --yolo -p "$PROMPT"
+
+# grok
+grok -p "$PROMPT" --always-approve
 ```
 
 The prompt ALWAYS goes **before** `--add-dir` (claude), otherwise

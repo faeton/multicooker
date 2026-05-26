@@ -244,8 +244,8 @@ signal: on design tasks, judge disagreement means there's no
 with your eyes.
 
 ```bash
-# Run the design example (requires claude/codex/gemini logins)
-multicooker new landing --participants claude,codex,gemini
+# Run the design example (requires claude/codex/gemini logins; grok optional)
+multicooker new landing --participants claude,codex,gemini,grok
 TASK=$(basename "$(ls -d cooks/*-landing | tail -1)")
 cp examples/design-landing/{BRIEF.md,JUDGE_BRIEF.md,brief.yaml} cooks/$TASK/
 cp examples/design-landing/raw/* cooks/$TASK/raw/

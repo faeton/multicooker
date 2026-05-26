@@ -239,8 +239,8 @@ content-fit / polish`. Два судьи разных flavor'ов оценива
 выбирать надо глазами.
 
 ```bash
-# Запуск design-примера (нужны claude/codex/gemini логины)
-multicooker new landing --participants claude,codex,gemini
+# Запуск design-примера (нужны claude/codex/gemini логины; grok опционально)
+multicooker new landing --participants claude,codex,gemini,grok
 TASK=$(basename "$(ls -d cooks/*-landing | tail -1)")
 cp examples/design-landing/{BRIEF.md,JUDGE_BRIEF.md,brief.yaml} cooks/$TASK/
 cp examples/design-landing/raw/* cooks/$TASK/raw/

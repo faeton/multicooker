@@ -1,12 +1,13 @@
-# design-landing — same brief, three landings
+# design-landing — same brief, four landings
 
-A design task: each participant (`claude`, `codex`, `gemini`) gets
-the same brief — "design a landing page for `multicooker`" — and
-each produces its own `out/index.html`. Two judges score the
-results blindly against a 5-dimension visual rubric.
+A design task: each participant (`claude`, `codex`, `gemini`,
+`grok`) gets the same brief — "design a landing page for
+`multicooker`" — and each produces its own `out/index.html`. Two
+judges score the results blindly against a 5-dimension visual
+rubric.
 
 The interesting thing about design tasks here isn't picking a
-winner; it's seeing **how the same brief collapses into three very
+winner; it's seeing **how the same brief collapses into four very
 different aesthetic decisions** when each model interprets it. One
 model tends toward dense, technical layouts; another toward
 generous whitespace and big type; another toward dark-mode
@@ -16,8 +17,8 @@ the design picks.
 
 ## What you need
 
-- `claude`, `codex`, `gemini` CLIs installed and logged in (or
-  comment out flavors you don't have in `brief.yaml`).
+- `claude`, `codex`, `gemini`, `grok` CLIs installed and logged in
+  (or comment out flavors you don't have in `brief.yaml`).
 - Docker Desktop / colima running.
 - A few minutes — design tasks have a 10-minute per-participant
   timeout, but most finish well under that.
@@ -26,7 +27,7 @@ the design picks.
 
 ```bash
 # Copy this example into your cooks/ as a real cook
-multicooker new landing --participants claude,codex,gemini
+multicooker new landing --participants claude,codex,gemini,grok
 TASK=$(ls -d cooks/*-landing | tail -1)
 cp examples/design-landing/BRIEF.md       "$TASK/"
 cp examples/design-landing/JUDGE_BRIEF.md "$TASK/"
@@ -45,7 +46,7 @@ cat  "$TASK"/leaderboard.md
 
 ## What to look at
 
-When you open the three `index.html` files side-by-side in your
+When you open the four `index.html` files side-by-side in your
 browser, look for:
 
 - **Color palette decisions.** Did the model commit to one accent

@@ -8,8 +8,8 @@ will go into debugging your CLI's argv.
 ## What to decide up front
 
 1. **How does the CLI authenticate?** Via subscription OAuth files on the
-   host (like claude/codex/gemini)? Via an API key in env? No auth (like
-   `dummy`)? This affects `creds.py`.
+   host (like claude/codex/gemini/grok)? Via an API key in env? No auth
+   (like `dummy`)? This affects `creds.py`.
 2. **Is there a non-interactive flag?** If the CLI hangs on approval
    prompts in headless mode without something like `--yes`, `--yolo`,
    `--dangerously-bypass-...` — you need to find the equivalent. Without

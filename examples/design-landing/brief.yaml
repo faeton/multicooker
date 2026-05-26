@@ -8,10 +8,12 @@ participants:
   - { name: claude, flavor: claude }
   - { name: codex,  flavor: codex }
   - { name: gemini, flavor: gemini }
+  - { name: grok,   flavor: grok }
 
 # Anti-self-judge: each judge scores everyone except its own flavor.
-# Two judges, different flavors → robust scoring even if one model
-# has aesthetic preferences favoring its own output.
+# Two judges of different flavors give robust coverage — each participant
+# is scored by at least one non-self judge. Add a third (e.g. gemini-judge
+# or grok-judge) if you want symmetric coverage at higher cost.
 judges:
   - { name: claude-judge, flavor: claude }
   - { name: codex-judge,  flavor: codex }

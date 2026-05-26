@@ -14,8 +14,8 @@ underspecified brief.
    approval-bypass flags. They can't reach the host. Runtime
    details — `docs/orchestration.md`.
 2. **No API keys.** Subscription creds (`Claude Pro` /
-   `ChatGPT Plus` / `Gemini Advanced`) are bind-mounted or in
-   named volumes, RO. See `docs/auth.md`.
+   `ChatGPT Plus` / `Gemini Advanced` / `SuperGrok`) are
+   bind-mounted or in named volumes, RO. See `docs/auth.md`.
 3. **One cook = one folder `cooks/<YYMMDD-name>/`.** Created via
    `multicooker new <name>`. Date prefix is added automatically;
    if the user already provided a `YYMMDD-` prefix, it isn't
@@ -114,8 +114,12 @@ doesn't judge claude's output). So:
   scored by no one.
 - With one participant flavor, you cannot judge it with that
   flavor's judge — pick a different judge flavor.
-- With three participant flavors (claude/codex/gemini), two judges
-  of different flavors is typically enough — each covers the other.
+- With several participant flavors (e.g. claude/codex/gemini/grok),
+  two judges of different flavors is typically enough: every
+  submission ends up scored by at least one non-self judge
+  (submissions of the judge flavors get scored by the other judge;
+  the remaining flavors get scored by both). Add a third judge if
+  you want symmetric two-judge coverage on every submission.
 
 ### `raw/` — references
 

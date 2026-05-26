@@ -43,16 +43,16 @@ Lessons squeezed out of that experience are described at the end.
 ## Mental model
 
 ```
-                          one task
-                              │
-              ┌───────────────┼───────────────┐
-              ▼               ▼               ▼
-         ┌────────┐      ┌────────┐      ┌────────┐
-         │ claude │      │ codex  │      │ gemini │      ← parallel, isolated
-         │ /work/ │      │ /work/ │      │ /work/ │
-         └───┬────┘      └───┬────┘      └───┬────┘
-             │ raw/ (read-only, shared)      │
-             └────────────┬───────────────────┘
+                              one task
+                                  │
+            ┌──────────────┬──────┴───────┬──────────────┐
+            ▼              ▼              ▼              ▼
+       ┌────────┐     ┌────────┐     ┌────────┐     ┌────────┐
+       │ claude │     │ codex  │     │ gemini │     │ grok   │  ← parallel,
+       │ /work/ │     │ /work/ │     │ /work/ │     │ /work/ │    isolated
+       └───┬────┘     └───┬────┘     └───┬────┘     └───┬────┘
+           │     raw/ (read-only, shared)               │
+           └──────────────┬───────────────┬─────────────┘
                           ▼
                    sealed snapshots
                           │
@@ -60,7 +60,7 @@ Lessons squeezed out of that experience are described at the end.
               ▼                        ▼
          ┌────────┐              ┌────────┐
          │ judge  │              │ judge  │           ← scoring panel
-         │ claude │              │ gemini │             (anonymized A/B/C)
+         │ claude │              │ gemini │             (anonymized A/B/C/D)
          └───┬────┘              └───┬────┘
              │                       │
              └─────────┬─────────────┘
@@ -203,7 +203,7 @@ except symlinks).
 
 ```python
 participants = brief.participants
-mapping = {A: claude, B: codex, C: gemini} (random shuffle)
+mapping = {A: claude, B: codex, C: gemini, D: grok} (random shuffle)
 copy each work/<participant>/ → _judge_input/submissions/<letter>/
 for judge in brief.judges:
     warn if judge.flavor == any participant.flavor   # anti-self-judge (advisory only)
@@ -331,8 +331,8 @@ ledger. v0.2 wants an automatic ledger (one of the TODOs).
 ```
 brew install claude-code     # or the official anthropic installer
 ```
-Same for `codex` and `gemini`. If you don't need a particular
-participant — remove it from `brief.yaml` before cook.
+Same for `codex`, `gemini`, and `grok`. If you don't need a
+particular participant — remove it from `brief.yaml` before cook.
 
 ### "the judge didn't write scores.json"
 Look at `cooks/<name>/judging/_logs/<judge>/<flavor>.stdout.log`.
@@ -430,8 +430,8 @@ list):
    versioned task specs (ideas from agentevals / OpenAI Evals).
 6. **Web report** — `multicooker serve <name>` shows HTML with
    diffs between submissions, judging logs, and the leaderboard.
-7. **Cross-cook leaderboard** — global table "claude wins 7 out
-   of 10 tasks, codex 2, gemini 1".
+7. **Cross-cook leaderboard** — global table "claude wins 6 out
+   of 10 tasks, grok 2, codex 1, gemini 1".
 
 ## Lessons from reproxy/arena
 
