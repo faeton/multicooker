@@ -26,7 +26,7 @@ import yaml
 
 from . import base_images, compose_render, compose_runner, metrics
 from .cook import _seal_for_judging, _snapshot_creds_or_die, _write_trace
-from .runner_common import RunResult
+from .runner_common import RunResult, copytree_clean
 
 
 REFINE_PROMPT_HEADER = """\
@@ -105,7 +105,7 @@ def _snapshot_previous(cook_dir: Path, participants: list[dict],
         if dst.exists():
             shutil.rmtree(dst)
         if src.exists():
-            shutil.copytree(src, dst)
+            copytree_clean(src, dst)
     # Also snapshot the sealed judging inbox if present (so judging history
     # for that round is preserved alongside the raw work).
     inbox = cook_dir / "judging" / "_inbox"
@@ -113,7 +113,7 @@ def _snapshot_previous(cook_dir: Path, participants: list[dict],
         dst = snap_root / "_inbox"
         if dst.exists():
             shutil.rmtree(dst)
-        shutil.copytree(inbox, dst)
+        copytree_clean(inbox, dst)
     return snap_root
 
 
@@ -203,7 +203,8 @@ def _run_one(cook_dir: Path, project: str, participant: dict,
 
 def refine(name: str, root: Path,
            participants_override: list[str] | None = None,
-           feedback_path: Path | None = None) -> int:
+           feedback_path: Path | None = None,
+           profile_override: str | None = None) -> int:
     cook_dir = root / name if not Path(name).is_absolute() else Path(name)
     if not cook_dir.exists():
         print(f"error: cook folder {cook_dir} does not exist", flush=True)
@@ -273,7 +274,7 @@ def refine(name: str, root: Path,
 
     # 2. Compose render (judges section may be re-rendered later by `judge`,
     #    but we still need participant services to exist.)
-    compose_render.render_compose(cook_dir, cfg)
+    compose_render.render_compose(cook_dir, cfg, profile_override=profile_override)
 
     # 3. Per-participant prompts.
     prompts = {p["name"]: _build_prompt(cook_dir, p, round_num, shared_fb, brief_text)

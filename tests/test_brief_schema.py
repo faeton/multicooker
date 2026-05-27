@@ -116,3 +116,38 @@ def test_service_name_must_be_safe() -> None:
     cfg["participants"][0]["name"] = "has spaces"
     errs = validate(cfg)
     assert any("alphanumeric" in e for e in errs)
+
+
+def test_resources_block_happy_path() -> None:
+    cfg = _good()
+    cfg["resources"] = {"profile": "medium"}
+    cfg["participants"][0]["resources"] = {"mem_limit": "2g", "cpus": 1.5}
+    assert validate(cfg) == []
+
+
+def test_resources_invalid_profile() -> None:
+    cfg = _good()
+    cfg["resources"] = {"profile": "huge"}
+    errs = validate(cfg)
+    assert any("profile" in e for e in errs)
+
+
+def test_resources_invalid_mem_string() -> None:
+    cfg = _good()
+    cfg["participants"][0]["resources"] = {"mem_limit": "two gigs"}
+    errs = validate(cfg)
+    assert any("mem_limit" in e for e in errs)
+
+
+def test_resources_invalid_cpus() -> None:
+    cfg = _good()
+    cfg["participants"][0]["resources"] = {"cpus": "fast"}
+    errs = validate(cfg)
+    assert any("cpus" in e for e in errs)
+
+
+def test_resources_invalid_pids() -> None:
+    cfg = _good()
+    cfg["participants"][0]["resources"] = {"pids_limit": -1}
+    errs = validate(cfg)
+    assert any("pids_limit" in e for e in errs)

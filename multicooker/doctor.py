@@ -24,7 +24,7 @@ from pathlib import Path
 
 import yaml
 
-from . import base_images, brief_schema, creds
+from . import base_images, brief_schema, compose_render, creds, host_profile
 
 
 TEMPLATES_PARTICIPANTS = (
@@ -103,11 +103,103 @@ def _check_flavor(flavor: str) -> tuple[bool, str]:
         return True, "creds present"
 
 
+def _capacity_check(cfg: dict, profile_override: str | None,
+                    concurrent_cooks: int, reserve_mib: int) -> int:
+    """Plan host capacity for this cook. Returns 0 if it fits, 1 if not.
+
+    Reads `docker info` from the active docker context — so on a laptop
+    with local docker it sees the laptop, and with `DOCKER_HOST=ssh://on1`
+    or `docker context use on1` it sees the remote box. We deliberately
+    don't shell out to SSH ourselves.
+
+    Sizing: a cook runs participants and judges in *separate phases*
+    (cook → judge), so the peak is max(N_p, N_j), not their sum. For
+    M concurrent cooks the peak is max × M.
+    """
+    info = host_profile.docker_info()
+    if info is None:
+        print("  [WARN] capacity: docker info unavailable — skipping plan")
+        return 0
+    mem_total_gib = info.get("MemTotal", 0) / (1024 ** 3) if info else 0
+    ncpu = info.get("NCPU")
+    server = info.get("ServerVersion", "?")
+    docker_root = info.get("DockerRootDir", "?")
+
+    top_resources = cfg.get("resources") or {}
+    cfg_profile = top_resources.get("profile")
+    profile = host_profile.resolve_profile(
+        cli_override=profile_override, cfg_override=cfg_profile,
+    )
+    tier = profile["tier"]
+
+    if profile["mem_limit"] is None:
+        # `large` host or explicit large profile — no caps are emitted.
+        # Capacity-check would compare nothing against host RAM. Print
+        # the picture but pass.
+        print(f"  [OK ] capacity: profile={tier} ({profile['source']}), "
+              f"host {mem_total_gib:.1f} GiB / {ncpu} vCPU, docker v{server}. "
+              f"No per-cell mem_limit emitted (large host); nothing to size.")
+        return 0
+
+    # Resolve per-actor limits the same way compose_render will, then
+    # take the worst case (the heaviest cell) and multiply by max
+    # cells in a single phase × concurrent cooks.
+    participants = cfg.get("participants") or []
+    judges = cfg.get("judges") or []
+
+    def per_cell_mib(actor: dict) -> int:
+        limits = compose_render._resolve_limits(actor, top_resources, profile)
+        b = host_profile.parse_mem(limits["mem_limit"])
+        return int(b / (1024 ** 2)) if b else 0
+
+    p_mib = [per_cell_mib(p) for p in participants]
+    j_mib = [per_cell_mib(j) for j in judges]
+    p_phase = sum(p_mib)
+    j_phase = sum(j_mib)
+    peak_mib = max(p_phase, j_phase)
+    needed_mib = peak_mib * max(1, concurrent_cooks)
+
+    # Best-effort host accounting: docker info doesn't expose MemAvailable
+    # or SwapTotal in older daemons. Use MemTotal − reserve as a floor.
+    available_mib = int(mem_total_gib * 1024) - reserve_mib
+    if available_mib < 0:
+        available_mib = 0
+
+    heaviest = max(p_mib + j_mib) if (p_mib or j_mib) else 0
+    print(f"  [..] capacity plan:")
+    print(f"        host: {mem_total_gib:.1f} GiB / {ncpu} vCPU, docker v{server}")
+    print(f"        docker root: {docker_root}")
+    print(f"        profile: {tier} ({profile['source']})")
+    print(f"        participants phase: {len(participants)} cells × peak "
+          f"{heaviest} MiB → {p_phase} MiB")
+    print(f"        judges phase:       {len(judges)} cells × peak "
+          f"{heaviest} MiB → {j_phase} MiB")
+    print(f"        concurrent cooks: {concurrent_cooks}")
+    print(f"        required (peak × concurrency): {needed_mib} MiB")
+    print(f"        available (MemTotal − {reserve_mib} MiB reserve): "
+          f"{available_mib} MiB")
+
+    if needed_mib > available_mib:
+        deficit = needed_mib - available_mib
+        print(f"  [FAIL] capacity: {deficit} MiB short. Options: "
+              f"--profile small, fewer participants/judges, "
+              f"--concurrent-cooks 1, or bigger host.")
+        return 1
+    margin = available_mib - needed_mib
+    print(f"  [OK ] capacity: fits with {margin} MiB margin.")
+    return 0
+
+
 def doctor(name: str | None, root: Path,
            participants_override: list[str] | None,
-           strict: bool = False) -> int:
+           strict: bool = False,
+           capacity: bool = False,
+           profile_override: str | None = None,
+           concurrent_cooks: int = 1,
+           reserve_mib: int = 2048) -> int:
     flavors: list[str]
     cook_dir: Path | None = None
+    cfg: dict | None = None
     if name:
         cook_dir = root / name if not Path(name).is_absolute() else Path(name)
         brief_yaml = cook_dir / "brief.yaml"
@@ -173,6 +265,16 @@ def doctor(name: str | None, root: Path,
         print(f"  [{marker}] {flavor} creds: {msg}")
         if not ok:
             failed += 1
+
+    if capacity:
+        if cfg is None:
+            print(f"  [WARN] capacity: no cook given — pass a cook name to size "
+                  f"per-cell mem against the host")
+            warned += 1
+        else:
+            rc = _capacity_check(cfg, profile_override, concurrent_cooks, reserve_mib)
+            if rc != 0:
+                failed += 1
 
     print()
     if failed:

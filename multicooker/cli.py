@@ -69,6 +69,16 @@ def main(argv: list[str] | None = None) -> int:
                     help="Override flavors to check (comma-separated)")
     pd.add_argument("--strict", action="store_true",
                     help="Treat warnings (missing base image) as failures (exit=1)")
+    pd.add_argument("--capacity", action="store_true",
+                    help="Also check host capacity against per-cell mem_limits "
+                         "(reads `docker info` from the active docker context)")
+    pd.add_argument("--profile", choices=["auto", "large", "medium", "small"],
+                    default=None,
+                    help="Profile to use when planning capacity (default: auto-detect)")
+    pd.add_argument("--concurrent-cooks", type=int, default=1,
+                    help="How many cooks may run in parallel on this host (default: 1)")
+    pd.add_argument("--reserve-mib", type=int, default=2048,
+                    help="MiB to leave for OS + other host services (default: 2048)")
 
     # build-base
     pbb = sub.add_parser("build-base",
@@ -96,12 +106,22 @@ def main(argv: list[str] | None = None) -> int:
                      help="NEW_NAME or NEW_NAME=FLAVOR (flavor defaults to NEW_NAME)")
     pap.add_argument("--root", default="cooks")
 
+    profile_help = (
+        "Resource profile for the docker context: auto (default, detects from "
+        "host RAM via `docker info`), large (no mem/cpu caps), medium "
+        "(2g/1cpu per cell), small (1g/0.5cpu). Overrides MULTICOOKER_PROFILE "
+        "env and brief.yaml resources.profile."
+    )
+    profile_choices = ["auto", "large", "medium", "small"]
+
     # cook
     pc = sub.add_parser("cook", help="Launch all participants in parallel")
     pc.add_argument("name", help="Cook folder name (under cooks/ unless absolute)")
     pc.add_argument("--root", default="cooks")
     pc.add_argument("--participants", default=None,
                     help="Override which participants to run (comma-separated NAMES from brief.yaml)")
+    pc.add_argument("--profile", choices=profile_choices, default=None,
+                    help=profile_help)
 
     # judge
     pj = sub.add_parser("judge", help="Score all participant outputs with LLM judges")
@@ -109,6 +129,8 @@ def main(argv: list[str] | None = None) -> int:
     pj.add_argument("--root", default="cooks")
     pj.add_argument("--judges", default=None,
                     help="Override judges (comma-separated, e.g. claude,gemini)")
+    pj.add_argument("--profile", choices=profile_choices, default=None,
+                    help=profile_help)
 
     # refine
     prf = sub.add_parser("refine",
@@ -121,6 +143,8 @@ def main(argv: list[str] | None = None) -> int:
                      help="Use this file as shared feedback instead of "
                           "cooks/<task>/FEEDBACK.md (handy for reusing feedback "
                           "across cooks).")
+    prf.add_argument("--profile", choices=profile_choices, default=None,
+                     help=profile_help)
 
     # diff
     pdf = sub.add_parser("diff",
@@ -142,6 +166,8 @@ def main(argv: list[str] | None = None) -> int:
     prj.add_argument("--root", default="cooks")
     prj.add_argument("--judges", default=None,
                      help="Override judges (comma-separated)")
+    prj.add_argument("--profile", choices=profile_choices, default=None,
+                     help=profile_help)
 
     # report
     pr = sub.add_parser("report", help="Build leaderboard.md from judge scores")
@@ -170,6 +196,10 @@ def main(argv: list[str] | None = None) -> int:
             name=args.name, root=Path(args.root),
             participants_override=_csv(args.participants),
             strict=args.strict,
+            capacity=args.capacity,
+            profile_override=args.profile,
+            concurrent_cooks=args.concurrent_cooks,
+            reserve_mib=args.reserve_mib,
         )
     if args.cmd == "build-base":
         flavors = args.flavors or sorted(
@@ -197,17 +227,20 @@ def main(argv: list[str] | None = None) -> int:
         return cook(
             name=args.name, root=Path(args.root),
             participants_override=_csv(args.participants),
+            profile_override=args.profile,
         )
     if args.cmd == "judge":
         return judge_cook(
             name=args.name, root=Path(args.root),
             judges_override=_csv(args.judges),
+            profile_override=args.profile,
         )
     if args.cmd == "refine":
         return refine(
             name=args.name, root=Path(args.root),
             participants_override=_csv(args.participants),
             feedback_path=Path(args.feedback) if args.feedback else None,
+            profile_override=args.profile,
         )
     if args.cmd == "diff":
         return diff_rounds(
@@ -219,6 +252,7 @@ def main(argv: list[str] | None = None) -> int:
         return rejudge(
             name=args.name, root=Path(args.root),
             judges_override=_csv(args.judges),
+            profile_override=args.profile,
         )
     if args.cmd == "report":
         return report(name=args.name, root=Path(args.root))

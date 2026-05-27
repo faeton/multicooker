@@ -29,6 +29,55 @@ from typing import Any
 # AND providing a Dockerfile under templates/cook/participants/<flavor>/.
 KNOWN_FLAVORS = frozenset({"claude", "codex", "gemini", "grok", "dummy"})
 
+# Mirror of host_profile.VALID_PROFILES; duplicated to keep brief_schema
+# import-free of subprocess-using modules (cheaper unit tests).
+VALID_PROFILES = frozenset({"auto", "large", "medium", "small"})
+
+
+def _is_number(x: Any) -> bool:
+    return isinstance(x, (int, float)) and not isinstance(x, bool)
+
+
+def _validate_resources(res: Any, where: str, errors: list[str]) -> None:
+    """Validate a `resources:` block (top-level or per-actor).
+
+    Accepted keys: profile (only at top-level, but we accept it
+    everywhere and ignore where it's nonsensical to keep the rule
+    simple), mem_limit, memswap_limit, cpus, pids_limit. Unknown
+    keys are warned about by the caller via validate_warnings.
+    """
+    if res is None:
+        return
+    if not isinstance(res, dict):
+        errors.append(f"{where}: must be a mapping (got {type(res).__name__})")
+        return
+    if "profile" in res:
+        prof = res["profile"]
+        if not isinstance(prof, str) or prof not in VALID_PROFILES:
+            errors.append(
+                f"{where}.profile: must be one of {sorted(VALID_PROFILES)} "
+                f"(got {prof!r})"
+            )
+    for key in ("mem_limit", "memswap_limit"):
+        if key in res:
+            v = res[key]
+            if not isinstance(v, (str, int)) or isinstance(v, bool):
+                errors.append(f"{where}.{key}: must be a docker-style mem string "
+                              f"(e.g. '2g', '512m') or bytes int (got {type(v).__name__})")
+                continue
+            if isinstance(v, str):
+                s = v.strip().lower()
+                if not s or (s[-1] not in "kmgt" and not s.isdigit()):
+                    errors.append(f"{where}.{key}='{v}': expected suffix k/m/g/t or raw bytes")
+    if "cpus" in res:
+        c = res["cpus"]
+        if not _is_number(c) and not (isinstance(c, str) and c.replace(".", "", 1).isdigit()):
+            errors.append(f"{where}.cpus: must be numeric (e.g. 1.0 or '0.5') — got {c!r}")
+    if "pids_limit" in res:
+        p = res["pids_limit"]
+        if not _is_int_like(p) or p <= 0:
+            errors.append(f"{where}.pids_limit: must be a positive integer (got {p!r})")
+
 
 def _is_int_like(x: Any) -> bool:
     return isinstance(x, int) and not isinstance(x, bool)
@@ -71,6 +120,8 @@ def _validate_actor(actor: Any, kind: str, idx: int,
             errors.append(f"{where}.timeout_s: must be a positive integer (got {t!r})")
     if "model" in actor and not isinstance(actor["model"], str):
         errors.append(f"{where}.model: must be a string if set (got {type(actor['model']).__name__})")
+    if "resources" in actor:
+        _validate_resources(actor["resources"], f"{where}.resources", errors)
 
 
 def _validate_rubric(rubric: Any, errors: list[str]) -> None:
@@ -156,6 +207,9 @@ def validate(cfg: Any) -> list[str]:
             _validate_actor(j, "judge", i, seen_j, errors)
 
     _validate_rubric(cfg.get("rubric"), errors)
+
+    if "resources" in cfg:
+        _validate_resources(cfg["resources"], "resources", errors)
 
     # Soft warning rolled into errors — only when participants exist and judges
     # do too: if every judge shares a flavor with every participant, anonymization

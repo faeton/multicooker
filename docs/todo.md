@@ -68,6 +68,35 @@ what's been knocked out in recent sessions.
   delete, what `clean` fixes.
 - [x] Git history secret scan (gitleaks) wired into CI.
 
+## Resource limits — follow-ups after profiles landed
+
+- [ ] `multicooker clean` should also prune buildkit cache. Today
+  `--rmi local` removes per-cook images but BuildKit's content-
+  addressable cache stays; for cooks with custom Dockerfiles that
+  apt/npm-install, that's 0.5–2 GiB/cook of disk growth.
+  Add `multicooker clean <cook> --build-cache` (or fold into
+  `--rmi local`) → `docker builder prune --filter "label=...".
+- [ ] Zombie networks on SIGKILL: `_resolve_limits` doesn't change
+  the network model, but the existing gap is still here — if cook
+  is killed mid-run, `net-participant-<name>` survives. Bounded
+  cleanup: `multicooker clean --networks` walks
+  `docker network ls --filter name=mc-<task>-net-` and removes
+  unattached ones. Already mentioned in
+  `docs/implementation-status.md`.
+- [ ] `/work/out` has no disk quota — a participant can write
+  unbounded artifacts on the host bind-mount. `mem_limit` doesn't
+  cover this. Real fix needs xfs project quotas or a sized volume;
+  skip unless someone hits it.
+- [ ] `docker compose build` is not covered by `mem_limit` (build
+  uses BuildKit's own resources). On a small host, document
+  "build big bases on a fat machine + push to a registry" rather
+  than building on the VPS itself. Not code, just docs/pitfalls.
+- [ ] Calibrate profile defaults from real RSS data — run a hello +
+  design cook with `docker stats` snapshotting, compare against
+  the current `1g/2g` floors. If real peak is consistently below
+  half a floor, tighten; if above, raise. Wait until a few cooks
+  have run end-to-end with the new limits before tuning.
+
 ## Auth + creds
 
 - [ ] Extend `creds.py` for the case where the user has multiple

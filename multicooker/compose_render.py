@@ -19,16 +19,29 @@ Image naming: `mc-<task>-<flavor>` to keep cooks isolated from each other.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import yaml
 
-from . import metrics
+from . import host_profile, metrics
 
 
-def render_compose(cook_dir: Path, cfg: dict) -> Path:
-    """Write cook_dir/compose.yaml. Returns the path."""
+def render_compose(cook_dir: Path, cfg: dict,
+                   profile_override: str | None = None) -> Path:
+    """Write cook_dir/compose.yaml. Returns the path.
+
+    `profile_override` comes from the CLI (--profile auto|large|medium|small).
+    brief.yaml `resources.profile` and the MULTICOOKER_PROFILE env var
+    are also honored via `host_profile.resolve_profile`.
+    """
     name = cfg["name"]
     project = f"mc-{name}".lower().replace("_", "-")
+
+    top_resources = cfg.get("resources") or {}
+    cfg_profile = top_resources.get("profile")
+    profile = host_profile.resolve_profile(
+        cli_override=profile_override, cfg_override=cfg_profile,
+    )
 
     services: dict = {}
     networks: dict = {}
@@ -46,6 +59,9 @@ def render_compose(cook_dir: Path, cfg: dict) -> Path:
             project=project,
             network=net,
             model=p.get("model"),
+            limits=_resolve_limits(
+                actor=p, top_resources=top_resources, profile=profile,
+            ),
         )
 
     # Judges (only emit if judging input has been materialized; cook.py
@@ -62,6 +78,9 @@ def render_compose(cook_dir: Path, cfg: dict) -> Path:
             project=project,
             network=net,
             model=j.get("model"),
+            limits=_resolve_limits(
+                actor=j, top_resources=top_resources, profile=profile,
+            ),
         )
 
     compose = {
@@ -73,6 +92,76 @@ def render_compose(cook_dir: Path, cfg: dict) -> Path:
     out = cook_dir / "compose.yaml"
     out.write_text(yaml.safe_dump(compose, sort_keys=False))
     return out
+
+
+def _resolve_limits(actor: dict, top_resources: dict,
+                    profile: dict) -> dict[str, Any]:
+    """Per-cell limits: profile defaults overridden by brief.yaml.
+
+    Resolution (weakest → strongest):
+      1. profile defaults (host_profile.PROFILES[tier])
+      2. brief.yaml top-level `resources:` (apart from `profile`)
+      3. brief.yaml per-actor `resources:`
+
+    Returns a dict with possibly-None keys:
+      mem_limit, memswap_limit, cpus, pids_limit
+
+    Convention: if mem_limit is set and memswap_limit isn't, mirror
+    mem_limit into memswap_limit. Without this, docker defaults
+    memswap to 2×mem, which means a cell can quietly drain the host's
+    swap — exactly what we want to prevent on a shared VPS.
+    """
+    actor_res = actor.get("resources") or {}
+
+    def pick(key: str) -> Any:
+        if key in actor_res:
+            return actor_res[key]
+        if key in top_resources and key != "profile":
+            return top_resources[key]
+        return profile.get(key)
+
+    mem = pick("mem_limit")
+    memswap = pick("memswap_limit")
+    if mem is not None and memswap is None:
+        memswap = mem
+    cpus = pick("cpus")
+
+    # pids_limit override is allowed but rare; fall back to the cheap
+    # safety default if neither layer set it.
+    pids = (actor_res.get("pids_limit")
+            or top_resources.get("pids_limit")
+            or host_profile.DEFAULT_PIDS_LIMIT)
+
+    return {
+        "mem_limit": mem,
+        "memswap_limit": memswap,
+        "cpus": str(cpus) if cpus is not None else None,
+        "pids_limit": pids,
+    }
+
+
+def _apply_limits(service: dict, limits: dict[str, Any]) -> None:
+    """Mutate `service` to add resource limits + cheap safeties.
+
+    Always emits: pids_limit, oom_score_adj, logging caps, ulimit nofile.
+    Conditionally emits: mem_limit, memswap_limit, cpus (only when the
+    profile/override set them — `large` profile leaves them None so dev
+    laptops aren't artificially throttled).
+    """
+    if limits["mem_limit"] is not None:
+        service["mem_limit"] = limits["mem_limit"]
+    if limits["memswap_limit"] is not None:
+        service["memswap_limit"] = limits["memswap_limit"]
+    if limits["cpus"] is not None:
+        service["cpus"] = limits["cpus"]
+    service["pids_limit"] = limits["pids_limit"]
+    service["oom_score_adj"] = host_profile.DEFAULT_OOM_SCORE_ADJ
+    soft, hard = host_profile.DEFAULT_NOFILE
+    service["ulimits"] = {"nofile": {"soft": soft, "hard": hard}}
+    service["logging"] = {
+        "driver": "json-file",
+        "options": dict(host_profile.DEFAULT_LOG_OPTS),
+    }
 
 
 def _auth_volumes(flavor: str, cook_dir: Path) -> list[str]:
@@ -126,7 +215,8 @@ def _usage_volumes(flavor: str, cook_dir: Path, cell_kind: str, name: str) -> li
 
 def _participant_service(cook_dir: Path, participant_name: str,
                          flavor: str, project: str, network: str,
-                         model: str | None = None) -> dict:
+                         model: str | None = None,
+                         limits: dict | None = None) -> dict:
     cd = cook_dir.resolve()
     image = f"{project}-{flavor}"
     env = {
@@ -135,7 +225,7 @@ def _participant_service(cook_dir: Path, participant_name: str,
     }
     if model:
         env["MULTICOOKER_MODEL"] = model
-    return {
+    service = {
         "image": image,
         "build": {
             "context": str(cd / "participants" / flavor),
@@ -157,11 +247,15 @@ def _participant_service(cook_dir: Path, participant_name: str,
         # Don't restart on failure — we want a definitive exit.
         "restart": "no",
     }
+    if limits is not None:
+        _apply_limits(service, limits)
+    return service
 
 
 def _judge_service(cook_dir: Path, judge_name: str, flavor: str,
                    project: str, network: str,
-                   model: str | None = None) -> dict:
+                   model: str | None = None,
+                   limits: dict | None = None) -> dict:
     cd = cook_dir.resolve()
     image = f"{project}-{flavor}-judge"
     judge_ctx = cd / "judge" / flavor
@@ -181,7 +275,7 @@ def _judge_service(cook_dir: Path, judge_name: str, flavor: str,
     }
     if model:
         env["MULTICOOKER_MODEL"] = model
-    return {
+    service = {
         "image": image,
         "build": build,
         "container_name": f"{project}-judge-{judge_name}",
@@ -195,3 +289,6 @@ def _judge_service(cook_dir: Path, judge_name: str, flavor: str,
         ],
         "restart": "no",
     }
+    if limits is not None:
+        _apply_limits(service, limits)
+    return service

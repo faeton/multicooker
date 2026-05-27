@@ -28,7 +28,8 @@ from .judge import judge as judge_cook
 
 
 def rejudge(name: str, root: Path,
-            judges_override: list[str] | None = None) -> int:
+            judges_override: list[str] | None = None,
+            profile_override: str | None = None) -> int:
     cook_dir = root / name if not Path(name).is_absolute() else Path(name)
     if not cook_dir.exists():
         print(f"error: cook folder {cook_dir} does not exist", flush=True)
@@ -57,4 +58,5 @@ def rejudge(name: str, root: Path,
         if child.is_dir() and not child.name.startswith("_"):
             shutil.rmtree(child)
 
-    return judge_cook(name=name, root=root, judges_override=judges_override)
+    return judge_cook(name=name, root=root, judges_override=judges_override,
+                      profile_override=profile_override)

@@ -69,6 +69,7 @@ Begin.
 
 def _seal_for_judging(cook_dir: Path, participant: str) -> None:
     """Copy work/<p>/ into judging/_inbox/<p>/ as a frozen artefact."""
+    from .runner_common import copytree_clean
     src = cook_dir / "work" / participant
     dst = cook_dir / "judging" / "_inbox" / participant
     if dst.exists():
@@ -78,7 +79,7 @@ def _seal_for_judging(cook_dir: Path, participant: str) -> None:
         if item.is_symlink():
             continue
         if item.is_dir():
-            shutil.copytree(item, dst / item.name)
+            copytree_clean(item, dst / item.name)
         else:
             shutil.copy2(item, dst / item.name)
 
@@ -216,7 +217,8 @@ def _snapshot_creds_or_die(cook_dir: Path, flavors: list[str]) -> int | None:
 
 
 def cook(name: str, root: Path,
-         participants_override: list[str] | None = None) -> int:
+         participants_override: list[str] | None = None,
+         profile_override: str | None = None) -> int:
     cook_dir = root / name if not Path(name).is_absolute() else Path(name)
     if not cook_dir.exists():
         print(f"error: cook folder {cook_dir} does not exist; "
@@ -265,7 +267,7 @@ def cook(name: str, root: Path,
     if rc is not None:
         return rc
 
-    compose_render.render_compose(cook_dir, cfg)
+    compose_render.render_compose(cook_dir, cfg, profile_override=profile_override)
 
     # Worktrees BEFORE build — compose refuses to mount missing files.
     for p in participants:

@@ -225,6 +225,71 @@ history (see `docs/lifecycle.md`).
 - `_mapping.json` — regenerated for each judging (new random
   A/B/C permutation, so the judge doesn't get trained).
 
+## Resource limits and profiles
+
+The same `brief.yaml` runs on a 100 GiB dev laptop and on an 11 GiB
+shared VPS. Limits are picked from the **active docker context**
+(whatever `docker info` reports) — switch context with `docker context
+use <name>` or `DOCKER_HOST=ssh://host` and the same cook automatically
+adapts.
+
+Profiles:
+
+| profile | trigger             | per-cell `mem_limit` | per-cell `cpus` |
+|---------|---------------------|----------------------|-----------------|
+| `large` | host has ≥32 GiB    | not emitted          | not emitted     |
+| `medium`| 8–32 GiB            | `2g`                 | `1.0`           |
+| `small` | <8 GiB              | `1g`                 | `0.5`           |
+| `auto`  | default — detects   | depends on host      | depends on host |
+
+`large` deliberately emits no `mem_limit` / `cpus` so a dev laptop
+doesn't get artificially throttled — agents can take whatever the
+host has.
+
+**Cheap safeties always emitted** (independent of profile, because they
+cost nothing and prevent specific failure modes):
+
+- `pids_limit: 512` — fork-bomb in a participant doesn't take down the IDE
+- `oom_score_adj: 500` — under global OOM a participant cell dies before
+  matomo/bugsink (which sit at the default `0`)
+- `memswap_limit = mem_limit` (when `mem_limit` is set) — without this
+  docker defaults `memswap` to `2×mem`, so one runaway cell could quietly
+  drain the host's swap
+- `logging: json-file max-size=10m max-file=3` — docker journal stays bounded
+- `ulimits.nofile: 4096:8192` — FD leak doesn't propagate
+
+**Override precedence** (weakest to strongest):
+
+1. auto-detect from `docker info`
+2. `MULTICOOKER_PROFILE=large|medium|small` env var
+3. `--profile` CLI flag (`cook`/`refine`/`judge`/`rejudge`)
+4. `brief.yaml` top-level `resources.profile`
+5. `brief.yaml` per-participant / per-judge `resources:` block:
+
+   ```yaml
+   participants:
+     - name: claude
+       flavor: claude
+       resources:
+         mem_limit: 4g       # this participant needs more
+         cpus: 2.0
+   ```
+
+**Capacity preflight**:
+
+```bash
+multicooker doctor <cook> --capacity \
+    --concurrent-cooks 1 --reserve-mib 2048
+```
+
+Reads `docker info` from the active context, sums per-cell limits over
+the heaviest phase (cook **or** judge — they run sequentially, so peak
+is `max(N_p, N_j)`, not the sum), multiplies by `--concurrent-cooks`,
+compares against `MemTotal − reserve_mib`. Fails (exit 1) if the cook
+doesn't fit; suggests a smaller profile or fewer cells. For remote
+hosts, set `DOCKER_HOST=ssh://on1` before the call — no SSH transport
+inside multicooker.
+
 ## What we do NOT carry over from arena
 
 - Middlebox / observer / origin containers aren't here — our

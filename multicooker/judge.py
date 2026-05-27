@@ -88,13 +88,14 @@ def _anonymize(participants: list[dict], inbox_root: Path,
     judge_in.mkdir(parents=True)
     sub_dir = judge_in / "submissions"
     sub_dir.mkdir()
+    from .runner_common import copytree_clean
     for p, letter in zip(participants, letters):
         name = p["name"]
         src = sealed / name
         if not src.exists():
             continue
         dst = sub_dir / letter
-        shutil.copytree(src, dst)
+        copytree_clean(src, dst)
         mapping[letter] = name
     return judge_in, mapping
 
@@ -263,7 +264,8 @@ def _collect_scores(work: Path, judge_outbox: Path) -> bool:
 
 
 def judge(name: str, root: Path,
-          judges_override: list[str] | None = None) -> int:
+          judges_override: list[str] | None = None,
+          profile_override: str | None = None) -> int:
     cook_dir = root / name if not Path(name).is_absolute() else Path(name)
     cfg = yaml.safe_load((cook_dir / "brief.yaml").read_text())
 
@@ -301,7 +303,7 @@ def judge(name: str, root: Path,
     rc = _snapshot_creds_or_die(cook_dir, flavors_needed)
     if rc is not None:
         return rc
-    compose_render.render_compose(cook_dir, cfg)
+    compose_render.render_compose(cook_dir, cfg, profile_override=profile_override)
 
     try:
         base_images.ensure_built(flavors_needed)
