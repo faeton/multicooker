@@ -24,3 +24,6 @@ include = ["multicooker*"]
     "templates/**/.gitkeep",
     "templates/**/.dockerignore",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

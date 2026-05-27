@@ -190,7 +190,8 @@ cat cooks/260509-my-task/leaderboard.md
 
 ## Примеры
 
-В репо два готовых примера, которые можно скопировать и запустить:
+В репо есть два готовых runnable-примера и несколько reusable-форм
+для типовых cook'ов:
 
 - **[`examples/hello-task`](examples/hello-task/)** — sanitized
   smoke-тест на `dummy` flavor, без LLM-кредов. ~10 секунд от
@@ -201,6 +202,24 @@ cat cooks/260509-my-task/leaderboard.md
   настоящая design-задача: каждая модель рисует свой лендинг для
   `multicooker`. Три HTML-файла, которые ты потом сравниваешь
   в браузере. Подробнее ниже.
+
+- **[`examples/technical-proposal`](examples/technical-proposal/)**
+  — абстрактный RFC / architecture proposal. Используй, когда нужен
+  внятный build-рекомендательный документ с альтернативами, планом и
+  честными рисками.
+
+- **[`examples/code-review-audit`](examples/code-review-audit/)**
+  — ревью по исходникам, root cause известной проблемы и guidance для
+  downstream refine. Полезно перед рискованным patch/rewrite cook'ом.
+
+- **[`examples/implementation-spike`](examples/implementation-spike/)**
+  — узкий рабочий прототип с `README.md`, `STATUS.md`, исходниками и
+  проверяемыми командами. Используй после того, как цель уже сужена.
+
+- **[`examples/multi-concept-ui`](examples/multi-concept-ui/)**
+  — три расходящихся self-contained UI-концепта для одного workflow.
+  Используй, когда надо исследовать interaction model, а не сделать один
+  аккуратный лендинг.
 
 ## Use case: дизайн и креативные задачи
 

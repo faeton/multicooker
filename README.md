@@ -193,7 +193,8 @@ cat cooks/260509-my-task/leaderboard.md
 
 ## Examples
 
-Two ready-to-run examples in the repo — copy and go:
+The repo includes two ready-to-run examples plus reusable cook shapes
+for common task types:
 
 - **[`examples/hello-task`](examples/hello-task/)** — sanitized
   smoke test on the `dummy` flavor, no LLM creds required. ~10
@@ -204,6 +205,24 @@ Two ready-to-run examples in the repo — copy and go:
   real design task: each model designs its own landing page for
   `multicooker`. Three HTML files you then compare side-by-side in
   a browser. More on this below.
+
+- **[`examples/technical-proposal`](examples/technical-proposal/)**
+  — abstract RFC / architecture proposal. Use when the desired output is
+  a clear build recommendation with alternatives, staged execution, and
+  risk honesty.
+
+- **[`examples/code-review-audit`](examples/code-review-audit/)**
+  — source-reading review, known-issue root cause, and downstream refine
+  guidance. Use before a risky patch or rewrite cook.
+
+- **[`examples/implementation-spike`](examples/implementation-spike/)**
+  — narrow working prototype with `README.md`, `STATUS.md`, source, and
+  runnable evidence. Use after the target has been scoped.
+
+- **[`examples/multi-concept-ui`](examples/multi-concept-ui/)**
+  — three divergent self-contained UI concepts for one workflow. Use
+  when you want interaction-model exploration, not one polished landing
+  page.
 
 ## Use case: design and creative tasks
 

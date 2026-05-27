@@ -1,0 +1,23 @@
+name: technical-proposal
+timeout_s: 1800
+judge_timeout_s: 900
+
+participants:
+  - { name: claude, flavor: claude }
+  - { name: codex,  flavor: codex }
+  - { name: gemini, flavor: gemini }
+  - { name: grok,   flavor: grok }
+
+judges:
+  - { name: claude-judge, flavor: claude }
+  - { name: codex-judge,  flavor: codex }
+  - { name: grok-judge,   flavor: grok }
+
+rubric:
+  scale: [0, 5]
+  dimensions:
+    - { id: problem-framing,      weight: 20 }
+    - { id: architecture-realism, weight: 25 }
+    - { id: tradeoff-clarity,     weight: 20 }
+    - { id: execution-plan,       weight: 20 }
+    - { id: risk-honesty,         weight: 15 }

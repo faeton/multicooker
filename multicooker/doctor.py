@@ -166,7 +166,7 @@ def _capacity_check(cfg: dict, profile_override: str | None,
         available_mib = 0
 
     heaviest = max(p_mib + j_mib) if (p_mib or j_mib) else 0
-    print(f"  [..] capacity plan:")
+    print("  [..] capacity plan:")
     print(f"        host: {mem_total_gib:.1f} GiB / {ncpu} vCPU, docker v{server}")
     print(f"        docker root: {docker_root}")
     print(f"        profile: {tier} ({profile['source']})")
@@ -268,8 +268,8 @@ def doctor(name: str | None, root: Path,
 
     if capacity:
         if cfg is None:
-            print(f"  [WARN] capacity: no cook given — pass a cook name to size "
-                  f"per-cell mem against the host")
+            print("  [WARN] capacity: no cook given — pass a cook name to size "
+                  "per-cell mem against the host")
             warned += 1
         else:
             rc = _capacity_check(cfg, profile_override, concurrent_cooks, reserve_mib)

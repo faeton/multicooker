@@ -1,0 +1,23 @@
+name: code-review-audit
+timeout_s: 3000
+judge_timeout_s: 1800
+
+participants:
+  - { name: claude, flavor: claude }
+  - { name: codex,  flavor: codex }
+  - { name: gemini, flavor: gemini }
+  - { name: grok,   flavor: grok }
+
+judges:
+  - { name: claude-judge, flavor: claude }
+  - { name: codex-judge,  flavor: codex }
+  - { name: gemini-judge, flavor: gemini }
+
+rubric:
+  scale: [0, 5]
+  dimensions:
+    - { id: evidence-quality, weight: 25 }
+    - { id: bug-analysis,     weight: 25 }
+    - { id: prioritization,   weight: 15 }
+    - { id: refine-guidance,  weight: 20 }
+    - { id: honesty,          weight: 15 }

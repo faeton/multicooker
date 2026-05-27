@@ -1,0 +1,23 @@
+name: implementation-spike
+timeout_s: 5400
+judge_timeout_s: 1800
+
+participants:
+  - { name: claude, flavor: claude }
+  - { name: codex,  flavor: codex }
+  - { name: gemini, flavor: gemini }
+  - { name: grok,   flavor: grok }
+
+judges:
+  - { name: claude-judge, flavor: claude }
+  - { name: codex-judge,  flavor: codex }
+  - { name: grok-judge,   flavor: grok }
+
+rubric:
+  scale: [0, 5]
+  dimensions:
+    - { id: buildability,       weight: 25 }
+    - { id: core-functionality, weight: 30 }
+    - { id: integration-fit,    weight: 15 }
+    - { id: scope-control,      weight: 15 }
+    - { id: honesty,            weight: 15 }

@@ -1,0 +1,23 @@
+name: multi-concept-ui
+timeout_s: 4200
+judge_timeout_s: 1500
+
+participants:
+  - { name: claude, flavor: claude }
+  - { name: codex,  flavor: codex }
+  - { name: gemini, flavor: gemini }
+  - { name: grok,   flavor: grok }
+
+judges:
+  - { name: claude-judge, flavor: claude }
+  - { name: codex-judge,  flavor: codex }
+  - { name: grok-judge,   flavor: grok }
+
+rubric:
+  scale: [0, 5]
+  dimensions:
+    - { id: concept-spread,      weight: 25 }
+    - { id: workflow-fit,        weight: 25 }
+    - { id: interaction-quality, weight: 20 }
+    - { id: visual-craft,        weight: 20 }
+    - { id: honesty,             weight: 10 }
