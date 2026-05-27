@@ -217,10 +217,12 @@ def _normalize_scores(scores: dict) -> dict:
     - Top-level {"scores": {...}} wrapper (when JUDGE_BRIEF.md shows that shape).
     - Flat per-label {"<dim>": int, ...} with no "dimensions" key.
     """
-    # Unwrap {"scores": {...}} if it's the sole top-level key.
+    totals = scores.get("totals") if isinstance(scores, dict) else None
+
+    # Unwrap {"scores": {...}}. Judges often include sibling metadata such as
+    # {"totals": {...}} even when the brief asks for strict scores-only JSON.
     if (
         isinstance(scores, dict)
-        and len(scores) == 1
         and "scores" in scores
         and isinstance(scores["scores"], dict)
     ):
@@ -231,10 +233,22 @@ def _normalize_scores(scores: dict) -> dict:
         if not isinstance(entry, dict):
             continue
         if "dimensions" in entry and isinstance(entry["dimensions"], dict):
+            if (
+                isinstance(totals, dict)
+                and "total" not in entry
+                and isinstance(totals.get(label), (int, float))
+            ):
+                entry = {**entry, "total": totals[label]}
             normalized[label] = entry
             continue
         # Flat: lift int-valued keys into a "dimensions" block.
         total = entry.get("total")
+        if (
+            total is None
+            and isinstance(totals, dict)
+            and isinstance(totals.get(label), (int, float))
+        ):
+            total = totals[label]
         dims = {k: v for k, v in entry.items()
                 if k != "total" and isinstance(v, (int, float))}
         out: dict = {"dimensions": dims}

@@ -189,3 +189,20 @@ def test_underscore_dirs_ignored(tmp_path: Path):
     judges_line = next(line for line in md.splitlines() if line.startswith("Judges:"))
     assert "_inbox" not in judges_line
     assert "_logs" not in judges_line
+
+
+def test_report_ignores_unknown_score_keys(tmp_path: Path):
+    cook = _make_cook(tmp_path, ["a"])
+    _put_judge(cook, "j1", {
+        "a": {"dimensions": {"correctness": 5}},
+        "scores": {"dimensions": {}},
+        "totals": {"dimensions": {"A": 100}},
+    })
+
+    rc = report("260101-test", tmp_path)
+
+    assert rc == 0
+    md = (cook / "leaderboard.md").read_text()
+    assert "| a | 100.0 | 1 |" in md
+    assert "| scores |" not in md
+    assert "| totals |" not in md

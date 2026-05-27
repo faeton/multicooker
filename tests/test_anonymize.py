@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from multicooker.judge import _anonymize
+from multicooker.judge import _anonymize, _normalize_scores
 
 
 def _make_sealed(tmp_path: Path, participants: list[str]) -> Path:
@@ -93,3 +93,27 @@ def test_judge_input_dir_is_recreated(tmp_path: Path):
     # Second run.
     judge_in2, _ = _anonymize(parts, judge_in_root, sealed)
     assert not (judge_in2 / "stale.txt").exists()
+
+
+def test_normalize_scores_unwraps_scores_with_totals():
+    scores = _normalize_scores({
+        "scores": {
+            "K": {"buildability": 0, "architecture-fit": 3},
+            "M": {"buildability": 5, "architecture-fit": 5},
+        },
+        "totals": {
+            "K": 34,
+            "M": 92,
+        },
+    })
+
+    assert scores == {
+        "K": {
+            "dimensions": {"buildability": 0, "architecture-fit": 3},
+            "total": 34,
+        },
+        "M": {
+            "dimensions": {"buildability": 5, "architecture-fit": 5},
+            "total": 92,
+        },
+    }

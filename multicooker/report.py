@@ -105,7 +105,7 @@ def report(name: str, root: Path) -> int:
     for jn, scores in per_judge.items():
         for p, entry in scores.items():
             if p not in agg:
-                agg[p] = {"scores": [], "by_judge": {}}
+                continue
             dims = entry.get("dimensions") if isinstance(entry, dict) else None
             score = _compute_score(dims, rubric) if dims else None
             if score is not None:
