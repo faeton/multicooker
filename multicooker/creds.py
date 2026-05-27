@@ -108,6 +108,13 @@ def _snapshot_claude_macos(into: Path) -> None:
     dst.parent.mkdir(parents=True, exist_ok=True)
     dst.write_bytes(blob)
     dst.chmod(0o600)
+    # Pre-create the usage-ledger mountpoint. compose mounts .auth/claude/
+    # at /home/node/.claude/:ro and then overlays a writable usage dir at
+    # /home/node/.claude/projects/. Docker needs the projects/ entry to
+    # exist inside the RO source dir so it has a mountpoint for the
+    # writable overlay; otherwise container init fails with
+    # "read-only file system" on mkdirat.
+    (into / "claude" / "projects").mkdir(exist_ok=True)
 
 
 def _snapshot_claude_linux(into: Path) -> None:
@@ -120,6 +127,8 @@ def _snapshot_claude_linux(into: Path) -> None:
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dst)
     dst.chmod(0o600)
+    # See _snapshot_claude_macos for why this empty dir matters.
+    (into / "claude" / "projects").mkdir(exist_ok=True)
 
 
 def snapshot(cook_dir: Path, flavors: list[str]) -> Path:

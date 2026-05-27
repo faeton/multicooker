@@ -9,6 +9,7 @@ participant's exit. Was previously split between `host_runner.py` and
 from __future__ import annotations
 
 import re
+import shutil
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -129,3 +130,59 @@ def tail(path: Path, n_bytes: int = 16384) -> str:
             return f.read().decode("utf-8", errors="replace")
     except FileNotFoundError:
         return ""
+
+
+# Build artifacts + dep caches that should never be snapshotted/sealed.
+# Snapshotting them blows up disk (10s of GB per round) and CPU (millions
+# of inodes for pnpm-style content stores). Matched by basename.
+#
+# NOTE: `out` is deliberately NOT here even though it's a common build dir
+# in some ecosystems — multicooker's whole convention is that participants
+# write their submission to `./out/`. An ignore on "out" silently strips
+# every submission during the anonymize step.
+_DEFAULT_IGNORE = frozenset({
+    "node_modules", ".pnpm-store", ".yarn", ".npm",
+    ".expo", ".turbo", ".next", ".nuxt", ".svelte-kit",
+    "dist", "build", ".output",
+    "Pods", "DerivedData", ".gradle",
+    "__pycache__", ".venv", "venv", ".pytest_cache", ".mypy_cache",
+    "target",
+    ".DS_Store",
+})
+
+
+def _read_gitignore_basenames(src: Path) -> set[str]:
+    """Read top-level basename entries from src/.gitignore.
+
+    Only basename-style entries are honored (no slashes, no globs, no
+    negation) — covers the 99% case where participants want to exclude
+    things like `node_modules` or `secret.env` without writing a full
+    gitignore parser.
+    """
+    gi = src / ".gitignore"
+    if not gi.exists():
+        return set()
+    out: set[str] = set()
+    for line in gi.read_text().splitlines():
+        line = line.strip().rstrip("/")
+        if not line or line.startswith("#") or line.startswith("!"):
+            continue
+        if "/" in line or "*" in line or "?" in line or "[" in line:
+            continue
+        out.add(line)
+    return out
+
+
+def copytree_clean(src: Path, dst: Path) -> None:
+    """shutil.copytree that skips build artifacts and .gitignore basenames.
+
+    Used by cook/refine/judge to snapshot or seal participant output
+    without dragging in node_modules, pnpm stores, build dirs, etc.
+    """
+    extras = _read_gitignore_basenames(src)
+    patterns = _DEFAULT_IGNORE | extras
+
+    def _ignore(_dirpath: str, names: list[str]) -> set[str]:
+        return {n for n in names if n in patterns}
+
+    shutil.copytree(src, dst, ignore=_ignore)
