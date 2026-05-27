@@ -131,6 +131,9 @@ what's been knocked out in recent sessions.
   without re-cooking. The full structured-trace version (tool calls
   / replay through a different CLI) deferred — see
   `docs/design-notes.md` §"Replayable traces — full version".
+- [x] Usage metrics (light): per-cell CLI usage ledgers are mounted
+  into the cook folder and parsed into participant `RUN_RESULT.json`,
+  judge `JUDGE_RESULT.json`, `trace.json`, and `leaderboard.md`.
 - [ ] Registry approach (OpenAI Evals): versioned eval/task specs
   shared as templates. Deferred — see `docs/design-notes.md`
   §"Registry / versioned task specs".

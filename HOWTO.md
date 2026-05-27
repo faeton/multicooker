@@ -321,9 +321,12 @@ participants × tokens_per_participant × $/token
 For a typical "write a 2-page essay" task: ~$0.30–$1.50. For
 "rewrite this repository": ~$5–$30 (depends on size).
 
-v0.1 has no cost-tracker. If you need one — look at
-prompt+completion in the subscription CLI logs or in the API
-ledger. v0.2 wants an automatic ledger (one of the TODOs).
+`multicooker` records best-effort local usage for Claude, Codex, and
+Gemini by mounting each CLI's normal history directory into the cook
+folder. Participant totals land in `RUN_RESULT.json` and per-cell
+`work/<participant>/trace.json`; judge totals land in
+`JUDGE_RESULT.json`. `leaderboard.md` shows duration, token totals, and
+cost when the underlying CLI ledger exposes it.
 
 ## What to do when something breaks
 
@@ -420,17 +423,15 @@ deferred — see `docs/design-notes.md`.
 What's left on the TODO list (see `docs/todo.md` for the current
 list):
 
-1. **Cost ledger** — on every run, parse usage from the CLI and
-   write `cook/cost_ledger.json`.
-2. **Resume** — `multicooker resume <name>` re-runs only
+1. **Resume** — `multicooker resume <name>` re-runs only
    `rate_limited` or `error` participants, leaving `ok` alone.
-3. **Per-participant timeout** (currently a global `timeout_s`).
-4. **`multicooker diff <task> N M`** — round comparison.
-5. **Replayable traces / registry** — structured run trace,
+2. **Per-participant timeout** (currently a global `timeout_s`).
+3. **`multicooker diff <task> N M`** — round comparison.
+4. **Replayable traces / registry** — structured run trace,
    versioned task specs (ideas from agentevals / OpenAI Evals).
-6. **Web report** — `multicooker serve <name>` shows HTML with
+5. **Web report** — `multicooker serve <name>` shows HTML with
    diffs between submissions, judging logs, and the leaderboard.
-7. **Cross-cook leaderboard** — global table "claude wins 6 out
+6. **Cross-cook leaderboard** — global table "claude wins 6 out
    of 10 tasks, grok 2, codex 1, gemini 1".
 
 ## Lessons from reproxy/arena

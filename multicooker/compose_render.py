@@ -22,6 +22,8 @@ from pathlib import Path
 
 import yaml
 
+from . import metrics
+
 
 def render_compose(cook_dir: Path, cfg: dict) -> Path:
     """Write cook_dir/compose.yaml. Returns the path."""
@@ -105,6 +107,21 @@ def _auth_volumes(flavor: str, cook_dir: Path) -> list[str]:
     raise ValueError(f"unknown flavor: {flavor}")
 
 
+def _usage_volumes(flavor: str, cook_dir: Path, cell_kind: str, name: str) -> list[str]:
+    """Writable mounts for CLI usage ledgers, kept inside the cook folder."""
+    root = metrics.prepare_usage_dir(cook_dir, cell_kind, name, flavor).resolve()
+    if flavor == "claude":
+        return [f"{root}/projects:/home/node/.claude/projects:rw"]
+    if flavor == "codex":
+        return [f"{root}/sessions:/home/node/.codex/sessions:rw"]
+    if flavor == "gemini":
+        return [
+            f"{root}/tmp:/home/node/.gemini/tmp:rw",
+            f"{root}/history:/home/node/.gemini/history:rw",
+        ]
+    return []
+
+
 def _participant_service(cook_dir: Path, participant_name: str,
                          flavor: str, project: str, network: str,
                          model: str | None = None) -> dict:
@@ -132,6 +149,7 @@ def _participant_service(cook_dir: Path, participant_name: str,
             f"{cd}/work/{participant_name}/PROMPT.txt:/work/PROMPT.txt:ro",
             f"{cd}/work/{participant_name}/out:/work/out:rw",
             *_auth_volumes(flavor, cook_dir),
+            *_usage_volumes(flavor, cook_dir, "participant", participant_name),
         ],
         # `up` will run the entrypoint baked into the image.
         # Don't restart on failure — we want a definitive exit.
@@ -171,6 +189,7 @@ def _judge_service(cook_dir: Path, judge_name: str, flavor: str,
         "volumes": [
             f"{cd}/judging/_work-{judge_name}:/work:rw",
             *_auth_volumes(flavor, cook_dir),
+            *_usage_volumes(flavor, cook_dir, "judge", judge_name),
         ],
         "restart": "no",
     }

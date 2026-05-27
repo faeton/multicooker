@@ -29,7 +29,7 @@ from pathlib import Path
 
 import yaml
 
-from . import base_images, compose_render, compose_runner
+from . import base_images, compose_render, compose_runner, metrics
 from .cook import _snapshot_creds_or_die
 
 
@@ -135,6 +135,7 @@ def _run_judge(cook_dir: Path, project: str, judge_cfg: dict,
     print(f"[judge] running {jname} ({flavor}, timeout {eff_timeout}s)...",
           flush=True)
     work = _setup_judge_workdir(cook_dir, jname, judge_in, deterministic=True)
+    metrics.reset_usage_dir(cook_dir, "judge", jname, flavor)
     log_dir = cook_dir / "judging" / "_logs" / jname
     (work / "PROMPT.txt").write_text(JUDGE_PROMPT_TEMPLATE)
     service = f"judge-{jname}"
@@ -146,29 +147,64 @@ def _run_judge(cook_dir: Path, project: str, judge_cfg: dict,
     except Exception as e:                                                  # noqa: BLE001
         print(f"[judge] {jname}: failed to launch: {e}", flush=True)
         with lock:
-            results[jname] = {"ok": False, "reason": f"launch failed: {e}"}
+            results[jname] = {
+                "name": jname, "flavor": flavor, "ok": False,
+                "status": "error", "reason": f"launch failed: {e}",
+                "duration_s": 0.0,
+            }
         return
+    usage = metrics.collect_usage(cook_dir, "judge", jname, flavor)
     outbox = cook_dir / "judging" / jname
     ok = _collect_scores(work, outbox)
     if not ok:
         print(f"[judge] {jname}: did NOT produce scores.json "
               f"(exit={res.exit_code}). See {log_dir}", flush=True)
         with lock:
-            results[jname] = {"ok": False, "reason": "no scores.json"}
+            result = {
+                "name": jname, "flavor": flavor, "ok": False,
+                "status": "no_scores", "reason": "no scores.json",
+                "exit_code": res.exit_code,
+                "duration_s": round(res.duration_s, 1),
+                "stdout": str(res.stdout_path),
+                "stderr": str(res.stderr_path),
+            }
+            if usage is not None:
+                result["usage"] = usage
+            results[jname] = result
         return
     try:
         scores = json.loads((outbox / "scores.json").read_text())
     except json.JSONDecodeError as e:
         print(f"[judge] {jname}: scores.json invalid: {e}", flush=True)
         with lock:
-            results[jname] = {"ok": False, "reason": f"invalid json: {e}"}
+            result = {
+                "name": jname, "flavor": flavor, "ok": False,
+                "status": "invalid_json", "reason": f"invalid json: {e}",
+                "exit_code": res.exit_code,
+                "duration_s": round(res.duration_s, 1),
+                "stdout": str(res.stdout_path),
+                "stderr": str(res.stderr_path),
+            }
+            if usage is not None:
+                result["usage"] = usage
+            results[jname] = result
         return
     scores = _normalize_scores(scores)
     deanon = {mapping.get(k, k): v for k, v in scores.items()}
     (outbox / "scores_deanon.json").write_text(json.dumps(deanon, indent=2))
     print(f"[judge] {jname}: ok, {len(deanon)} participants scored", flush=True)
     with lock:
-        results[jname] = {"ok": True, "count": len(deanon)}
+        result = {
+            "name": jname, "flavor": flavor, "ok": True,
+            "status": "ok", "count": len(deanon),
+            "exit_code": res.exit_code,
+            "duration_s": round(res.duration_s, 1),
+            "stdout": str(res.stdout_path),
+            "stderr": str(res.stderr_path),
+        }
+        if usage is not None:
+            result["usage"] = usage
+        results[jname] = result
 
 
 def _normalize_scores(scores: dict) -> dict:
@@ -313,6 +349,13 @@ def judge(name: str, root: Path,
         compose_runner.teardown(cook_dir, project)
     except Exception as e:                                                  # noqa: BLE001
         print(f"[judge] teardown warning: {e}", flush=True)
+
+    summary = cook_dir / "JUDGE_RESULT.json"
+    summary.write_text(json.dumps({
+        "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "judges": [results[j["name"]] for j in judges_cfg if j["name"] in results],
+    }, indent=2))
+    print(f"[judge] summary at {summary}", flush=True)
 
     any_score = any(r.get("ok") for r in results.values())
     if not any_score:

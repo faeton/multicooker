@@ -28,9 +28,10 @@ cooks/<task>/
 ├── compose.yaml          # rendered from brief.yaml
 ├── work/<p>/PROMPT.txt   # the prompt the agent sees
 ├── work/<p>/out/         # the agent writes here (RW mount)
+├── work/<p>/usage/       # cook-local CLI usage ledgers for token parsing
 ├── logs/<p>/             # stdout.log / stderr.log per participant
 ├── judging/_inbox/<p>/   # sealed copy of out/ (input to judging)
-├── RUN_RESULT.json       # status + duration + rate-limit info per p
+├── RUN_RESULT.json       # status + duration + token usage per p
 └── (transient docker images & volumes, removed by `clean`)
 ```
 
@@ -61,6 +62,8 @@ cooks/<task>/
 ├── judging/<judge>/submissions/   # anonymized A/B/C copies
 ├── judging/<judge>/outbox/scores.json  # judge's verdict
 ├── judging/<judge>/outbox/review.md    # judge's commentary
+├── judging/_usage/<judge>/        # cook-local judge usage ledgers
+├── JUDGE_RESULT.json              # status + duration + token usage per judge
 └── (per-judge logs under logs/<judge>/)
 ```
 

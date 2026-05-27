@@ -8,6 +8,32 @@ from pathlib import Path
 import yaml
 
 
+def _fmt_duration(value) -> str:
+    if isinstance(value, (int, float)):
+        return f"{value:.1f}s"
+    return "?"
+
+
+def _fmt_tokens(entry: dict) -> str:
+    usage = entry.get("usage") if isinstance(entry, dict) else None
+    if not isinstance(usage, dict):
+        return "?"
+    total = usage.get("total_tokens")
+    if not isinstance(total, (int, float)):
+        return "?"
+    return f"{int(total):,}"
+
+
+def _fmt_cost(entry: dict) -> str:
+    usage = entry.get("usage") if isinstance(entry, dict) else None
+    if not isinstance(usage, dict):
+        return "?"
+    cost = usage.get("cost_usd")
+    if not isinstance(cost, (int, float)):
+        return "?"
+    return f"${cost:.4f}"
+
+
 def report(name: str, root: Path) -> int:
     cook_dir = root / name if not Path(name).is_absolute() else Path(name)
     cfg = yaml.safe_load((cook_dir / "brief.yaml").read_text())
@@ -62,15 +88,34 @@ def report(name: str, root: Path) -> int:
     rr_path = cook_dir / "RUN_RESULT.json"
     rr = json.loads(rr_path.read_text()) if rr_path.exists() else {"participants": []}
     rr_by_name = {p["name"]: p for p in rr.get("participants", [])}
+    jr_path = cook_dir / "JUDGE_RESULT.json"
+    jr = json.loads(jr_path.read_text()) if jr_path.exists() else {"judges": []}
 
     out = ["# Leaderboard — `" + str(cook_dir.name) + "`", ""]
     out.append(f"Judges: {', '.join(judges_used)}")
     out.append("")
-    out.append("| Rank | Participant | Mean score | # judges | Run status |")
-    out.append("|------|-------------|------------|----------|------------|")
+    out.append("| Rank | Participant | Mean score | # judges | Run status | Duration | Tokens | Cost |")
+    out.append("|------|-------------|------------|----------|------------|----------|--------|------|")
     for i, (p, mean, n) in enumerate(ranking, 1):
-        status = rr_by_name.get(p, {}).get("status", "?")
-        out.append(f"| {i} | {p} | {mean:.1f} | {n} | {status} |")
+        run_entry = rr_by_name.get(p, {})
+        status = run_entry.get("status", "?")
+        out.append(
+            f"| {i} | {p} | {mean:.1f} | {n} | {status} | "
+            f"{_fmt_duration(run_entry.get('duration_s'))} | "
+            f"{_fmt_tokens(run_entry)} | {_fmt_cost(run_entry)} |"
+        )
+    if jr.get("judges"):
+        out.append("")
+        out.append("## Judge run metrics")
+        out.append("")
+        out.append("| Judge | Status | Duration | Tokens | Cost |")
+        out.append("|-------|--------|----------|--------|------|")
+        for entry in jr.get("judges", []):
+            out.append(
+                f"| {entry.get('name', '?')} | {entry.get('status', '?')} | "
+                f"{_fmt_duration(entry.get('duration_s'))} | "
+                f"{_fmt_tokens(entry)} | {_fmt_cost(entry)} |"
+            )
     out.append("")
     out.append("## Per-judge breakdown")
     out.append("")

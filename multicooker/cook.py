@@ -29,7 +29,7 @@ from pathlib import Path
 
 import yaml
 
-from . import base_images, compose_render, compose_runner, creds
+from . import base_images, compose_render, compose_runner, creds, metrics
 from .runner_common import RunResult
 
 
@@ -107,7 +107,8 @@ def _setup_worktree(cook_dir: Path, participant: str, prompt_text: str) -> Path:
 def _write_trace(cook_dir: Path, participant: dict, mode: str,
                  round_num: int | None, started_at: str,
                  res: RunResult | None, status: str,
-                 error: str | None = None) -> None:
+                 error: str | None = None,
+                 usage: dict | None = None) -> None:
     """Per-cell trace.json next to work/<p>/. Cheap structured artifact for
     rejudge / debugging without re-running the LLM. Overwrites previous
     round's trace — round-N traces also live in rounds/<N>/<p>/trace.json
@@ -139,6 +140,8 @@ def _write_trace(cook_dir: Path, participant: dict, mode: str,
             "stdout_path": str(res.stdout_path),
             "stderr_path": str(res.stderr_path),
         })
+    if usage is not None:
+        trace["usage"] = usage
     trace_path.write_text(json.dumps(trace, indent=2))
 
 
@@ -150,6 +153,7 @@ def _run_participant(cook_dir: Path, project: str, participant: dict,
     service = f"participant-{name}"
     eff_timeout = int(participant.get("timeout_s", timeout_s))
     _setup_worktree(cook_dir, name, prompt_text)
+    metrics.reset_usage_dir(cook_dir, "participant", name, flavor)
     log_dir = cook_dir / "logs" / name
     started_at = datetime.now(timezone.utc).isoformat()
     print(f"[cook] {name} ({flavor}): launching service {service} "
@@ -176,8 +180,9 @@ def _run_participant(cook_dir: Path, project: str, participant: dict,
         else "ok" if res.exit_code == 0
         else "non_zero_exit"
     )
+    usage = metrics.collect_usage(cook_dir, "participant", name, flavor)
     with lock:
-        results[name] = {
+        result = {
             "name": name, "flavor": flavor, "status": status,
             "exit_code": res.exit_code,
             "duration_s": round(res.duration_s, 1),
@@ -186,8 +191,11 @@ def _run_participant(cook_dir: Path, project: str, participant: dict,
             "stdout": str(res.stdout_path),
             "stderr": str(res.stderr_path),
         }
+        if usage is not None:
+            result["usage"] = usage
+        results[name] = result
     _write_trace(cook_dir, participant, mode="cook", round_num=1,
-                 started_at=started_at, res=res, status=status)
+                 started_at=started_at, res=res, status=status, usage=usage)
     _seal_for_judging(cook_dir, name)
     print(f"[cook] {name}: {status} (exit={res.exit_code}, {res.duration_s:.1f}s)", flush=True)
 

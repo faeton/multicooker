@@ -111,6 +111,35 @@ def test_total_falls_back_to_sum_of_dimensions(tmp_path: Path):
     assert "| a | 7.0 | 1 |" in md
 
 
+def test_report_includes_run_metrics(tmp_path: Path):
+    cook = _make_cook(tmp_path, ["a"])
+    _put_judge(cook, "j1", {"a": {"dimensions": {"correctness": 3}, "total": 30.0}})
+    (cook / "RUN_RESULT.json").write_text(json.dumps({
+        "participants": [{
+            "name": "a",
+            "status": "ok",
+            "duration_s": 12.3,
+            "usage": {"total_tokens": 1234, "cost_usd": 0.0123},
+        }]
+    }))
+    (cook / "JUDGE_RESULT.json").write_text(json.dumps({
+        "judges": [{
+            "name": "j1",
+            "status": "ok",
+            "duration_s": 4.5,
+            "usage": {"total_tokens": 77},
+        }]
+    }))
+
+    rc = report("260101-test", tmp_path)
+
+    assert rc == 0
+    md = (cook / "leaderboard.md").read_text()
+    assert "| a | 30.0 | 1 | ok | 12.3s | 1,234 | $0.0123 |" in md
+    assert "## Judge run metrics" in md
+    assert "| j1 | ok | 4.5s | 77 | ? |" in md
+
+
 def test_underscore_dirs_ignored(tmp_path: Path):
     """report iterates judging/ but should skip _inbox, _logs, _mapping etc."""
     cook = _make_cook(tmp_path, ["a"])
