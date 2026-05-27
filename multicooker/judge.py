@@ -330,7 +330,16 @@ def judge(name: str, root: Path,
         return 2
 
     # Run judges in parallel, 2-sec stagger like cook (auth refresh storms).
-    results: dict[str, dict] = {}
+    results: dict[str, dict] = {
+        j["name"]: {
+            "name": j["name"],
+            "flavor": j.get("flavor", j["name"]),
+            "ok": False,
+            "status": "missing",
+            "duration_s": 0.0,
+        }
+        for j in judges_cfg
+    }
     lock = threading.Lock()
     threads: list[threading.Thread] = []
     for j in judges_cfg:

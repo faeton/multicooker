@@ -111,6 +111,8 @@ def _usage_volumes(flavor: str, cook_dir: Path, cell_kind: str, name: str) -> li
     """Writable mounts for CLI usage ledgers, kept inside the cook folder."""
     root = metrics.prepare_usage_dir(cook_dir, cell_kind, name, flavor).resolve()
     if flavor == "claude":
+        # This deliberately overlays a writable projects/ submount under the
+        # read-only ~/.claude auth mount so session ledgers stay cook-local.
         return [f"{root}/projects:/home/node/.claude/projects:rw"]
     if flavor == "codex":
         return [f"{root}/sessions:/home/node/.codex/sessions:rw"]

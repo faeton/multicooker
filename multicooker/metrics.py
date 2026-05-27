@@ -165,25 +165,18 @@ def _collect_codex(root: Path) -> UsageTotals:
         for line_obj in _iter_jsonl_file(file):
             if not isinstance(line_obj, dict):
                 continue
+            payload = _record(line_obj.get("payload"))
+            context_model = _extract_model(payload, line_obj)
+            if context_model is not None:
+                current_model = context_model
             if line_obj.get("type") == "turn_context":
-                payload = _record(line_obj.get("payload"))
-                current_model = (
-                    _str(payload.get("model"))
-                    or _str(payload.get("model_name"))
-                    or current_model
-                )
                 continue
             if line_obj.get("type") != "event_msg":
                 continue
-            payload = _record(line_obj.get("payload"))
             if payload.get("type") != "token_count":
                 continue
             info = _record(payload.get("info"))
-            model = (
-                _str(info.get("model"))
-                or _str(info.get("model_name"))
-                or current_model
-            )
+            model = _extract_model(info, payload, line_obj) or current_model
             last_usage = _record_or_none(info.get("last_token_usage"))
             total_usage = _record_or_none(info.get("total_token_usage"))
             usage = last_usage
@@ -266,9 +259,11 @@ def _subtract_usage(current: dict[str, Any],
     keys = [
         "input_tokens",
         "cached_input_tokens",
+        "cache_creation_input_tokens",
         "cache_read_input_tokens",
         "output_tokens",
         "reasoning_output_tokens",
+        "tool_tokens",
         "total_tokens",
     ]
     return {
@@ -288,6 +283,18 @@ def _gemini_tokens(tokens: dict[str, Any]) -> dict[str, Any]:
         "tool_tokens": _num(tokens, "tool", "tool_tokens"),
         "total_tokens": _num(tokens, "total"),
     }
+
+
+def _extract_model(*records: dict[str, Any]) -> str | None:
+    for record in records:
+        model = _str(record.get("model")) or _str(record.get("model_name"))
+        if model is not None:
+            return model
+        metadata = _record(record.get("metadata"))
+        model = _str(metadata.get("model")) or _str(metadata.get("model_name"))
+        if model is not None:
+            return model
+    return None
 
 
 def _record(value: Any) -> dict[str, Any]:

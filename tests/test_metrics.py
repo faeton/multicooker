@@ -70,6 +70,32 @@ def test_collect_codex_usage_from_last_token_usage(tmp_path: Path):
     assert usage["models"] == ["gpt-5"]
 
 
+def test_collect_codex_usage_from_metadata_model(tmp_path: Path):
+    cook = tmp_path / "cook"
+    path = cook / "work" / "codex" / "usage" / "codex" / "sessions" / "s.jsonl"
+    _write_jsonl(path, [
+        {"type": "session_configured", "payload": {"metadata": {"model": "gpt-5.1"}}},
+        {
+            "type": "event_msg",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "payload": {
+                "type": "token_count",
+                "info": {
+                    "last_token_usage": {
+                        "input_tokens": 10,
+                        "output_tokens": 4,
+                    }
+                },
+            },
+        },
+    ])
+
+    usage = metrics.collect_usage(cook, "participant", "codex", "codex")
+
+    assert usage is not None
+    assert usage["models"] == ["gpt-5.1"]
+
+
 def test_collect_codex_usage_from_total_delta(tmp_path: Path):
     cook = tmp_path / "cook"
     path = cook / "work" / "codex" / "usage" / "codex" / "sessions" / "s.jsonl"
@@ -79,7 +105,14 @@ def test_collect_codex_usage_from_total_delta(tmp_path: Path):
             "timestamp": "2026-01-01T00:00:00Z",
             "payload": {
                 "type": "token_count",
-                "info": {"total_token_usage": {"input_tokens": 10, "output_tokens": 4}},
+                "info": {
+                    "total_token_usage": {
+                        "input_tokens": 10,
+                        "output_tokens": 4,
+                        "cache_creation_input_tokens": 2,
+                        "tool_tokens": 3,
+                    }
+                },
             },
         },
         {
@@ -87,7 +120,14 @@ def test_collect_codex_usage_from_total_delta(tmp_path: Path):
             "timestamp": "2026-01-01T00:00:01Z",
             "payload": {
                 "type": "token_count",
-                "info": {"total_token_usage": {"input_tokens": 15, "output_tokens": 6}},
+                "info": {
+                    "total_token_usage": {
+                        "input_tokens": 15,
+                        "output_tokens": 6,
+                        "cache_creation_input_tokens": 5,
+                        "tool_tokens": 4,
+                    }
+                },
             },
         },
     ])
@@ -97,7 +137,9 @@ def test_collect_codex_usage_from_total_delta(tmp_path: Path):
     assert usage is not None
     assert usage["input_tokens"] == 15
     assert usage["output_tokens"] == 6
-    assert usage["total_tokens"] == 21
+    assert usage["cache_creation_input_tokens"] == 5
+    assert usage["tool_tokens"] == 4
+    assert usage["total_tokens"] == 30
 
 
 def test_collect_gemini_usage(tmp_path: Path):
