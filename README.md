@@ -352,6 +352,7 @@ The long version: [`HOWTO.md`](HOWTO.md). Internals:
 | `multicooker build-base [<flavor>...]` | Build the shared base image (auto-built before the first cook). |
 | `multicooker cook <task>` | Launch all participants in parallel. |
 | `multicooker refine <task>` | Round N+1 with feedback on top of previous out. |
+| `multicooker chef <task>` | Run one synthesis participant over sealed prior outputs. |
 | `multicooker judge <task>` | Anonymized scoring by all judges. |
 | `multicooker rejudge <task>` | Re-run judging (e.g. after editing `JUDGE_BRIEF.md`). |
 | `multicooker report <task>` | Roll-up into `leaderboard.md`. |

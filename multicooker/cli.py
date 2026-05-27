@@ -17,6 +17,7 @@ from .refine import refine
 from .rejudge import rejudge
 from .doctor import doctor
 from .diff_rounds import diff_rounds
+from .chef import chef
 from . import base_images
 
 
@@ -146,6 +147,32 @@ def main(argv: list[str] | None = None) -> int:
     prf.add_argument("--profile", choices=profile_choices, default=None,
                      help=profile_help)
 
+    # chef
+    pchef = sub.add_parser(
+        "chef",
+        help="Run one synthesis participant over sealed prior submissions",
+    )
+    pchef.add_argument("name", help="Cook folder name")
+    pchef.add_argument("--root", default="cooks")
+    pchef.add_argument("--chef", default="chef=codex",
+                       help="Chef participant spec NEW_NAME=FLAVOR (default: chef=codex)")
+    pchef.add_argument("--base", default=None,
+                       help="Baseline participant to preserve (default: rank #1 if known)")
+    pchef.add_argument("--donors", default=None,
+                       help="Comma-separated donor participants (default: all non-base participants)")
+    pchef.add_argument("--source", choices=["auto", "inbox", "work"], default="auto",
+                       help="Where to copy prior submissions from (default: auto)")
+    pchef.add_argument("--no-register", action="store_true",
+                       help="Do not add the chef participant to brief.yaml")
+    pchef.add_argument("--force", action="store_true",
+                       help="Allow overwriting an existing chef worktree")
+    pchef.add_argument("--timeout-s", type=int, default=None,
+                       help="Override chef timeout seconds")
+    pchef.add_argument("--model", default=None,
+                       help="Optional model string for the chef actor")
+    pchef.add_argument("--profile", choices=profile_choices, default=None,
+                       help=profile_help)
+
     # diff
     pdf = sub.add_parser("diff",
                          help="Show file-level diff between two refine rounds "
@@ -241,6 +268,19 @@ def main(argv: list[str] | None = None) -> int:
             participants_override=_csv(args.participants),
             feedback_path=Path(args.feedback) if args.feedback else None,
             profile_override=args.profile,
+        )
+    if args.cmd == "chef":
+        return chef(
+            name=args.name, root=Path(args.root),
+            chef_spec=args.chef,
+            base=args.base,
+            donors=_csv(args.donors),
+            source=args.source,
+            no_register=args.no_register,
+            force=args.force,
+            timeout_s=args.timeout_s,
+            profile_override=args.profile,
+            model=args.model,
         )
     if args.cmd == "diff":
         return diff_rounds(

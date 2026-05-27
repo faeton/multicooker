@@ -144,6 +144,12 @@ simultaneous refreshes — legacy from arena).
 blank slate. This is a different mode from cook (bake-off from
 scratch), and artifacts sit alongside.
 
+`multicooker chef <task>` — synthesis: one chef participant sees sealed
+prior outputs copied under `chef/<chef>/input/submissions/` and mounted
+read-only as `/work/chef-input`, writes one synthesized
+`work/<chef>/out/`, and is sealed into `judging/_inbox/<chef>/` for
+normal `rejudge` / `report`.
+
 ### What survives a round, what gets snapshotted
 
 State of round N before launching round N+1:
