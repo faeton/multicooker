@@ -29,13 +29,30 @@ class RunResult:
     attempts: int = 1
 
 
+_RATE_LIMIT_ERROR_PATTERNS = [
+    re.compile(
+        r"\brate[-_ ]?limit(?:ed)?\s+(?:reached|exceeded|exhausted|hit)\b",
+        re.I,
+    ),
+    re.compile(r"\brate[_-]?limit[_-]?(?:reached|exceeded|exhausted|hit)\b", re.I),
+]
+
+
+_QUOTA_EXHAUSTED_PATTERNS = [
+    re.compile(
+        r"^\s*(?:error[: ]+)?(?:resource\s+)?quota\s+(?:exceeded|exhausted)\b",
+        re.I | re.M,
+    ),
+]
+
+
 _RL_PATTERNS = {
     "claude": [
         re.compile(r"5[- ]hour limit reached", re.I),
         re.compile(r"weekly limit reached", re.I),
         re.compile(r"usage limit reached", re.I),
         re.compile(r"hit your limit", re.I),
-        re.compile(r"rate.?limit", re.I),
+        *_RATE_LIMIT_ERROR_PATTERNS,
         re.compile(r"resets?\s+(?:at\s+)?(\d{1,2}):(\d{2})\s*(am|pm)?", re.I),
         re.compile(r"please try again later", re.I),
     ],
@@ -43,16 +60,16 @@ _RL_PATTERNS = {
         re.compile(r"hit your usage limit", re.I),
         re.compile(r"try again at (\d{1,2}):(\d{2})\s*(am|pm)?", re.I),
         re.compile(r"usage limit", re.I),
-        re.compile(r"rate.?limit", re.I),
-        re.compile(r"quota.*(exceeded|exhausted)", re.I),
+        *_RATE_LIMIT_ERROR_PATTERNS,
+        *_QUOTA_EXHAUSTED_PATTERNS,
         re.compile(r"plan limit", re.I),
         re.compile(r"too many requests", re.I),
         re.compile(r"resets? in (\d+)\s*(hour|hours|h|minute|minutes|m)", re.I),
     ],
     "gemini": [
-        re.compile(r"quota.*(exceeded|exhausted)", re.I),
+        *_QUOTA_EXHAUSTED_PATTERNS,
         re.compile(r"resource.*exhausted", re.I),
-        re.compile(r"rate.?limit", re.I),
+        *_RATE_LIMIT_ERROR_PATTERNS,
         re.compile(r"daily.*limit", re.I),
         re.compile(r"retry.after[: ]+(\d+)", re.I),
     ],
@@ -61,9 +78,9 @@ _RL_PATTERNS = {
         # Real signatures will land once we have a rate-limited cook to study;
         # until then these cover the obvious shapes (subscription gate, 429s).
         re.compile(r"subscription.*required", re.I),
-        re.compile(r"rate.?limit", re.I),
+        *_RATE_LIMIT_ERROR_PATTERNS,
         re.compile(r"too many requests", re.I),
-        re.compile(r"quota.*(exceeded|exhausted)", re.I),
+        *_QUOTA_EXHAUSTED_PATTERNS,
         re.compile(r"retry.after[: ]+(\d+)", re.I),
     ],
 }
