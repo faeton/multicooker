@@ -9,7 +9,9 @@ Covered:
 - missing scores from one judge
 - invalid JSON in one judge's scores
 - empty judging dir → rc != 0
-- partial dimensions (no `total` key, fall back to summing dimensions)
+- no rubric in brief.yaml: equal-weight fallback over judge-provided dims
+- explicit rubric in brief.yaml: weighted normalization to 0-100
+- judge-supplied `total` is ignored — score is always recomputed from dims
 """
 
 from __future__ import annotations
@@ -42,19 +44,21 @@ def _put_judge(cook: Path, judge_name: str,
 
 
 def test_happy_path_two_judges(tmp_path: Path, capsys):
+    # No rubric → equal-weight fallback on the dims judges actually wrote.
     cook = _make_cook(tmp_path, ["a", "b"])
     _put_judge(cook, "judge1", {
-        "a": {"dimensions": {"correctness": 4}, "total": 80.0},
-        "b": {"dimensions": {"correctness": 2}, "total": 40.0},
+        "a": {"dimensions": {"correctness": 4}},
+        "b": {"dimensions": {"correctness": 2}},
     })
     _put_judge(cook, "judge2", {
-        "a": {"dimensions": {"correctness": 3}, "total": 60.0},
-        "b": {"dimensions": {"correctness": 4}, "total": 80.0},
+        "a": {"dimensions": {"correctness": 3}},
+        "b": {"dimensions": {"correctness": 4}},
     })
     rc = report("260101-test", tmp_path)
     assert rc == 0
     md = (cook / "leaderboard.md").read_text()
-    # a mean = 70, b mean = 60 — a should rank first.
+    # a mean = (4/5*100 + 3/5*100)/2 = 70.0
+    # b mean = (2/5*100 + 4/5*100)/2 = 60.0
     a_idx = md.find("| a |")
     b_idx = md.find("| b |")
     assert a_idx > 0 and b_idx > 0
@@ -66,7 +70,7 @@ def test_happy_path_two_judges(tmp_path: Path, capsys):
 def test_missing_scores_from_one_judge(tmp_path: Path):
     cook = _make_cook(tmp_path, ["a", "b"])
     _put_judge(cook, "judge1", {
-        "a": {"dimensions": {"correctness": 4}, "total": 80.0},
+        "a": {"dimensions": {"correctness": 4}},
     })
     # judge2 has no scores file at all.
     (cook / "judging" / "judge2").mkdir()
@@ -75,18 +79,19 @@ def test_missing_scores_from_one_judge(tmp_path: Path):
     md = (cook / "leaderboard.md").read_text()
     # b had no judge → mean 0.0, # judges 0.
     assert "| b | 0.0 | 0 |" in md
+    # a single judge gave correctness=4 → 80%
     assert "| a | 80.0 | 1 |" in md
 
 
 def test_invalid_json_skipped(tmp_path: Path):
     cook = _make_cook(tmp_path, ["a"])
     _put_judge(cook, "judge1", {}, broken=True)
-    _put_judge(cook, "judge2", {"a": {"total": 50.0, "dimensions": {}}})
+    _put_judge(cook, "judge2", {"a": {"dimensions": {"correctness": 5}}})
     rc = report("260101-test", tmp_path)
     assert rc == 0
     md = (cook / "leaderboard.md").read_text()
-    assert "| a | 50.0 | 1 |" in md
-    # judge1 should not appear in "Judges: ..." line.
+    # correctness=5 / max 5 → 100.0%
+    assert "| a | 100.0 | 1 |" in md
     judges_line = next(line for line in md.splitlines() if line.startswith("Judges:"))
     assert "judge1" not in judges_line
     assert "judge2" in judges_line
@@ -99,21 +104,50 @@ def test_no_judges_at_all(tmp_path: Path):
     assert not (cook / "leaderboard.md").exists()
 
 
-def test_total_falls_back_to_sum_of_dimensions(tmp_path: Path):
+def test_judge_supplied_total_is_ignored(tmp_path: Path):
+    """Judges have historically written `total` on different scales (raw sum
+    vs weighted-normalized). Report must ignore `total` and always recompute
+    from `dimensions` so mismatched scales don't poison the leaderboard."""
     cook = _make_cook(tmp_path, ["a"])
     _put_judge(cook, "j1", {
-        "a": {"dimensions": {"correctness": 3, "quality": 4}},  # no "total"
+        # Judge wrote a wildly wrong total — should be ignored.
+        "a": {"dimensions": {"correctness": 3, "quality": 4}, "total": 999.0},
     })
     rc = report("260101-test", tmp_path)
     assert rc == 0
     md = (cook / "leaderboard.md").read_text()
-    # Mean across totals — total comes from sum of dims = 7.
-    assert "| a | 7.0 | 1 |" in md
+    # Equal-weight fallback (no rubric): (3+4)/(2*5)*100 = 70.0
+    assert "| a | 70.0 | 1 |" in md
+    assert "999" not in md
+
+
+def test_explicit_rubric_uses_weighted_normalization(tmp_path: Path):
+    """When brief.yaml has a rubric with weights, scores are weighted."""
+    cook = _make_cook(tmp_path, ["a"])
+    (cook / "brief.yaml").write_text(yaml.safe_dump({
+        "name": "260101-test",
+        "participants": [{"name": "a", "flavor": "a"}],
+        "rubric": {
+            "scale": [0, 5],
+            "dimensions": [
+                {"id": "correctness", "weight": 80},
+                {"id": "polish", "weight": 20},
+            ],
+        },
+    }))
+    _put_judge(cook, "j1", {
+        "a": {"dimensions": {"correctness": 5, "polish": 1}},
+    })
+    rc = report("260101-test", tmp_path)
+    assert rc == 0
+    md = (cook / "leaderboard.md").read_text()
+    # weighted: (5*80 + 1*20) / (100 * 5) * 100 = 420/500*100 = 84.0
+    assert "| a | 84.0 | 1 |" in md
 
 
 def test_report_includes_run_metrics(tmp_path: Path):
     cook = _make_cook(tmp_path, ["a"])
-    _put_judge(cook, "j1", {"a": {"dimensions": {"correctness": 3}, "total": 30.0}})
+    _put_judge(cook, "j1", {"a": {"dimensions": {"correctness": 3}}})
     (cook / "RUN_RESULT.json").write_text(json.dumps({
         "participants": [{
             "name": "a",
@@ -135,7 +169,8 @@ def test_report_includes_run_metrics(tmp_path: Path):
 
     assert rc == 0
     md = (cook / "leaderboard.md").read_text()
-    assert "| a | 30.0 | 1 | ok | 12.3s | 1,234 | $0.0123 |" in md
+    # correctness=3/5 → 60.0%
+    assert "| a | 60.0 | 1 | ok | 12.3s | 1,234 | $0.0123 |" in md
     assert "## Judge run metrics" in md
     assert "| j1 | ok | 4.5s | 77 | ? |" in md
 
@@ -143,7 +178,7 @@ def test_report_includes_run_metrics(tmp_path: Path):
 def test_underscore_dirs_ignored(tmp_path: Path):
     """report iterates judging/ but should skip _inbox, _logs, _mapping etc."""
     cook = _make_cook(tmp_path, ["a"])
-    _put_judge(cook, "real-judge", {"a": {"total": 50.0, "dimensions": {}}})
+    _put_judge(cook, "real-judge", {"a": {"dimensions": {"correctness": 5}}})
     # Underscore dirs that the cook produces — must not be parsed as judges.
     (cook / "judging" / "_inbox").mkdir()
     (cook / "judging" / "_logs").mkdir()

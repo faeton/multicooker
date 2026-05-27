@@ -27,7 +27,10 @@ Score each dimension on a 0–5 scale (0 = absent / wrong, 5 = excellent).
 | **honesty** | 20 | Are uncertainties flagged? Are assumptions documented? Are alternatives considered? Does the participant pretend to know things it doesn't? |
 | **completeness** | 15 | Are all required artifacts present? Is the answer self-contained? |
 
-Total = sum of (dimension_score × weight) / 5. Max possible total = 100.
+multicooker computes the weighted total from `brief.yaml` weights — **only
+report `dimensions`. Do not compute or report `total` yourself**; doing so
+introduces scale mismatches across judges and silently breaks the
+leaderboard.
 
 ## Hard rules
 
@@ -50,8 +53,7 @@ Write two files under `./outbox/`:
       "quality": 3,
       "honesty": 5,
       "completeness": 4
-    },
-    "total": 78.0
+    }
   },
   "B": { ... },
   "C": { ... }
