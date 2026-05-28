@@ -44,6 +44,13 @@ Notable changes to multicooker. Newest first.
   (and that `JUDGE_BRIEF.md` exists when a rubric + judges are defined).
   `doctor` runs it; `cook` and `refine` refuse to start if it fails, so
   a drifted rubric is caught before any container work.
+- **Strict judge schema.** `judging.strict_schema: true` in `brief.yaml`
+  makes a judge whose `scores.json` doesn't match the canonical
+  `{label: {dimensions: {dim: int}}}` shape record `malformed_schema`
+  (surfaced in `status.json`, `JUDGE_RESULT.json`, `summary.json`, and
+  the leaderboard) with its scores excluded from aggregation — no silent
+  repair. A stale `scores_deanon.json` from a prior run is cleared at the
+  start of each judge so a now-failing judge can't aggregate old scores.
 - **Anti-self-judge policy.** `judging.policy` in `brief.yaml`
   (`require_distinct_flavor` | `warn` | `allow_self`, default `warn`).
   Under `require_distinct_flavor`, `report` drops same-flavor

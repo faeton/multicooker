@@ -230,6 +230,11 @@ def _validate_judging(judging: Any, errors: list[str]) -> None:
                 f"judging.policy: must be one of {sorted(VALID_JUDGING_POLICIES)} "
                 f"(got {pol!r})"
             )
+    if "strict_schema" in judging and not isinstance(judging["strict_schema"], bool):
+        errors.append(
+            f"judging.strict_schema: must be true or false "
+            f"(got {judging['strict_schema']!r})"
+        )
 
 
 def validate(cfg: Any) -> list[str]:

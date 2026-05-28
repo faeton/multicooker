@@ -395,6 +395,23 @@ A required path is satisfied only by a real, non-empty file. `multicooker lint`
 (and `doctor`) check that every rubric dimension id in `brief.yaml` is mirrored
 in `JUDGE_BRIEF.md`; `cook`/`refine` refuse to run if it isn't.
 
+### Strict judge schema (optional)
+
+By default `report` is tolerant — it repairs common judge-output variants
+(unwraps `{"scores": …}`, lifts flat dimensions). For automation that needs to
+trust the scores, opt into strict validation:
+
+```yaml
+judging:
+  strict_schema: true
+```
+
+A judge whose `scores.json` doesn't match the canonical
+`{"<label>": {"dimensions": {"<dim>": int}}}` shape is recorded as
+`malformed_schema` (in `status.json`, `JUDGE_RESULT.json`, `summary.json`, and
+the leaderboard's judge-run table) and its scores are **not** aggregated — no
+silent repair. Re-run just the judging with `multicooker rejudge`.
+
 ## Status
 
 `v0.2`. Tested on macOS with OrbStack and Docker Desktop. Linux

@@ -130,12 +130,17 @@ def _setup_judge_workdir(cook_dir: Path, judge_name: str,
 def _run_judge(cook_dir: Path, project: str, judge_cfg: dict,
                judge_in: Path, mapping: dict[str, str],
                timeout_s: int, results: dict,
-               lock: threading.Lock) -> None:
+               lock: threading.Lock, *, strict: bool = False) -> None:
     jname = judge_cfg["name"]
     flavor = judge_cfg.get("flavor", jname)
     eff_timeout = int(judge_cfg.get("timeout_s", timeout_s))
     print(f"[judge] running {jname} ({flavor}, timeout {eff_timeout}s)...",
           flush=True)
+    # Drop a stale scores_deanon.json from a prior run so a now-failing/malformed
+    # judge can't have its OLD scores silently aggregated by report.
+    stale_deanon = cook_dir / "judging" / jname / "scores_deanon.json"
+    if stale_deanon.exists():
+        stale_deanon.unlink()
     work = _setup_judge_workdir(cook_dir, jname, judge_in, deterministic=True)
     metrics.reset_usage_dir(cook_dir, "judge", jname, flavor)
     log_dir = cook_dir / "judging" / "_logs" / jname
@@ -206,7 +211,33 @@ def _run_judge(cook_dir: Path, project: str, judge_cfg: dict,
         state.append_event(cook_dir, "judge.finished", phase="judge", actor=jname,
                            payload={"ok": False, "status": "invalid_json"})
         return
-    scores = _normalize_scores(scores)
+    if strict:
+        canonical = _strict_canonical(scores)
+        if canonical is None:
+            print(f"[judge] {jname}: scores.json fails strict schema "
+                  f"(judging.strict_schema). Not aggregating.", flush=True)
+            with lock:
+                result = {
+                    "name": jname, "flavor": flavor, "ok": False,
+                    "status": "malformed_schema",
+                    "reason": "scores.json does not match strict "
+                              "scores[label][dimension]:int schema",
+                    "exit_code": res.exit_code,
+                    "duration_s": round(res.duration_s, 1),
+                    "stdout": str(res.stdout_path),
+                    "stderr": str(res.stderr_path),
+                }
+                if usage is not None:
+                    result["usage"] = usage
+                results[jname] = result
+            state.set_cell(cook_dir, jname, state=state.NON_ZERO_EXIT,
+                           finished_at=state.now_iso(), exit_class="malformed_schema")
+            state.append_event(cook_dir, "judge.finished", phase="judge", actor=jname,
+                               payload={"ok": False, "status": "malformed_schema"})
+            return
+        scores = canonical
+    else:
+        scores = _normalize_scores(scores)
     deanon = {mapping.get(k, k): v for k, v in scores.items()}
     (outbox / "scores_deanon.json").write_text(json.dumps(deanon, indent=2))
     print(f"[judge] {jname}: ok, {len(deanon)} participants scored", flush=True)
@@ -227,6 +258,32 @@ def _run_judge(cook_dir: Path, project: str, judge_cfg: dict,
                    duration_s=round(res.duration_s, 1))
     state.append_event(cook_dir, "judge.finished", phase="judge", actor=jname,
                        payload={"ok": True, "count": len(deanon)})
+
+
+def _strict_canonical(scores) -> dict | None:
+    """Return scores unchanged iff they match the strict canonical schema:
+
+        {"<label>": {"dimensions": {"<dim>": int, ...}, "total"?: int}}
+
+    `int` means a real integer (bool excluded), per the documented contract.
+    Returns None on any deviation. Unlike `_normalize_scores`, this performs NO
+    repair — strict mode wants malformed output flagged, not silently fixed.
+    """
+    if not isinstance(scores, dict) or not scores:
+        return None
+    for entry in scores.values():
+        if not isinstance(entry, dict):
+            return None
+        dims = entry.get("dimensions")
+        if not isinstance(dims, dict) or not dims:
+            return None
+        for v in dims.values():
+            if not isinstance(v, int) or isinstance(v, bool):
+                return None
+        if "total" in entry and (not isinstance(entry["total"], int)
+                                 or isinstance(entry["total"], bool)):
+            return None
+    return scores
 
 
 def _normalize_scores(scores: dict) -> dict:
@@ -391,11 +448,16 @@ def judge(name: str, root: Path,
         for j in judges_cfg
     }
     lock = threading.Lock()
+    strict = bool((cfg.get("judging") or {}).get("strict_schema", False))
+    if strict:
+        print("[judge] judging.strict_schema=true: malformed scores.json will be "
+              "flagged, not repaired.", flush=True)
     threads: list[threading.Thread] = []
     for j in judges_cfg:
         t = threading.Thread(
             target=_run_judge,
             args=(cook_dir, project, j, judge_in, mapping, timeout_s, results, lock),
+            kwargs={"strict": strict},
             daemon=True,
         )
         t.start()
