@@ -182,6 +182,8 @@ def _run_one(cook_dir: Path, project: str, participant: dict,
         print(f"[refine] {name}: FAILED to launch: {e}", flush=True)
         return
     status = classify_cell(res)
+    if state.is_cancelled(cook_dir) and status != "ok":
+        status = state.CELL_CANCELLED
     usage = metrics.collect_usage(cook_dir, "participant", name, flavor)
     with lock:
         result = {
@@ -278,6 +280,7 @@ def refine(name: str, root: Path,
                     "state": state.PENDING}
         for p in participants
     }
+    state.clear_cancel(cook_dir)  # drop any stale marker from a prior run
     state.update_status(cook_dir, cook=cook_dir.name, phase="refine",
                         state=state.COOKING, round=round_num, cells=refine_cells)
     state.append_event(cook_dir, "phase.started", cook=cook_dir.name, phase="refine",
@@ -346,9 +349,13 @@ def refine(name: str, root: Path,
         "participants": [results[p["name"]] for p in participants
                          if p["name"] in results],
     })
+    final_state = state.finalize(cook_dir, state.SEALED)
+    if final_state == state.CANCELLED:
+        state.append_event(cook_dir, "cook.cancelled", cook=cook_dir.name, phase="refine")
+        print(f"\n[refine] cancelled. partial round {round_num} results at {summary}")
+        return 130
     state.append_event(cook_dir, "seal.finished", phase="refine",
                        payload={"round": round_num})
-    state.update_status(cook_dir, state=state.SEALED)
     print(f"\n[refine] done. round {round_num} summary at {summary}")
     print(f"[refine] sealed work trees at {cook_dir}/judging/_inbox/")
     print(f"[refine] previous round preserved at {snap}")

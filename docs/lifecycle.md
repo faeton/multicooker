@@ -30,14 +30,24 @@ cooks/<task>/
 ├── work/<p>/out/         # the agent writes here (RW mount)
 ├── work/<p>/usage/       # cook-local CLI usage ledgers for token parsing
 ├── logs/<p>/             # stdout.log / stderr.log per participant
-├── judging/_inbox/<p>/   # sealed copy of out/ (input to judging)
+├── judging/_inbox/<p>/   # sealed out/ + sanitized meta.json (judge input)
 ├── RUN_RESULT.json       # status + duration + token usage per p
+├── status.json           # live cook + per-cell state (atomic; for `status`)
+├── events.jsonl          # append-only event log (for orchestrators)
 └── (transient docker images & volumes, removed by `clean`)
 ```
 
 `.auth/` is rebuilt every cook so host-side token rotations are
 picked up. `judging/_inbox/` is the boundary between the cook step
-and the judge step — once written, the participants are done.
+and the judge step — once written, the participants are done. It
+holds **only** each participant's `out/` plus a sanitized `meta.json`
+(`exit_class` + `round`) — never `PROMPT.txt`/`trace.json`/logs,
+which would name the flavor to the blind judges.
+
+`status.json`, `events.jsonl`, and (after `report`) `summary.json` are
+the machine-readable contract for an external control plane — see
+`docs/control-plane-readiness.md`. `cancel` adds a `.mc-cancel` marker;
+`resume` archives prior attempts under `attempts/round-<N>/<p>/`.
 
 ## Created by `multicooker refine <task>`
 
@@ -73,11 +83,15 @@ again and overwrites `_mapping.json`.
 ## Created by `multicooker report <task>`
 
 ```
-cooks/<task>/leaderboard.md
+cooks/<task>/leaderboard.md   # human-readable report
+cooks/<task>/summary.json     # canonical machine-readable result
 ```
 
-A markdown summary aggregating all judges' `scores.json` against
-the rubric weights from `brief.yaml`. Idempotent — safe to re-run.
+`leaderboard.md` is a markdown summary aggregating all judges'
+`scores.json` against the rubric weights from `brief.yaml`.
+`summary.json` is the same data for machines: ranking, per-judge
+breakdown, latest-round run metrics, and excluded self-flavor pairs.
+Both are idempotent — safe to re-run.
 
 ## Cleanup
 

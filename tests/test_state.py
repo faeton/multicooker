@@ -89,6 +89,42 @@ def test_concurrent_set_cell_no_lost_updates(tmp_path: Path):
     assert set(cells) == set(names)
 
 
+def test_reset_cell_drops_stale_fields(tmp_path: Path):
+    state.init_status(tmp_path, cook="c", phase="cook", state=state.COOKING)
+    state.set_cell(tmp_path, "a", role="participant", flavor="claude",
+                   state=state.RATE_LIMITED, finished_at="t1",
+                   exit_class=state.RATE_LIMITED, duration_s=3.0)
+    state.reset_cell(tmp_path, "a")
+    cell = state.read_status(tmp_path)["cells"]["a"]
+    assert cell["state"] == state.PENDING
+    assert cell["role"] == "participant"  # preserved
+    assert cell["flavor"] == "claude"     # preserved
+    assert "finished_at" not in cell
+    assert "exit_class" not in cell
+    assert "duration_s" not in cell
+
+
+def test_cancel_marker_lifecycle(tmp_path: Path):
+    assert state.is_cancelled(tmp_path) is False
+    state.request_cancel(tmp_path)
+    assert state.is_cancelled(tmp_path) is True
+    state.clear_cancel(tmp_path)
+    assert state.is_cancelled(tmp_path) is False
+    # clear is idempotent.
+    state.clear_cancel(tmp_path)
+
+
+def test_finalize_honors_cancel_marker(tmp_path: Path):
+    state.init_status(tmp_path, cook="c", phase="cook", state=state.COOKING)
+    # No marker → sealed.
+    assert state.finalize(tmp_path, state.SEALED) == state.SEALED
+    assert state.read_status(tmp_path)["state"] == state.SEALED
+    # Marker present → cancelled, even though we asked for sealed.
+    state.request_cancel(tmp_path)
+    assert state.finalize(tmp_path, state.SEALED) == state.CANCELLED
+    assert state.read_status(tmp_path)["state"] == state.CANCELLED
+
+
 def test_concurrent_append_event_no_truncation(tmp_path: Path):
     def worker(i: int):
         state.append_event(tmp_path, "tick", actor=f"a{i}", payload={"i": i})

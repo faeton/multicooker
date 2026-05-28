@@ -18,6 +18,9 @@ from .rejudge import rejudge
 from .doctor import doctor
 from .diff_rounds import diff_rounds
 from .status_cmd import status_cmd
+from .cancel_cmd import cancel_cmd
+from .resume_cmd import resume
+from .tail_cmd import tail_cmd
 from . import base_images
 
 
@@ -183,6 +186,33 @@ def main(argv: list[str] | None = None) -> int:
     pst.add_argument("--json", action="store_true", dest="as_json",
                      help="Emit the raw status.json snapshot as JSON")
 
+    # cancel
+    pcn = sub.add_parser("cancel",
+                         help="Stop a running cook and mark it cancelled "
+                              "(preserves partial outputs)")
+    pcn.add_argument("name", help="Cook folder name")
+    pcn.add_argument("--root", default="cooks")
+
+    # resume
+    prs = sub.add_parser("resume",
+                         help="Re-run only the retryable cells of the latest round")
+    prs.add_argument("name", help="Cook folder name")
+    prs.add_argument("--root", default="cooks")
+    prs.add_argument("--force", action="store_true",
+                     help="Also rerun cells that already succeeded")
+    prs.add_argument("--profile", choices=profile_choices, default=None,
+                     help=profile_help)
+
+    # tail
+    pt = sub.add_parser("tail",
+                        help="Stream a cook's cell logs, prefixed by actor")
+    pt.add_argument("name", help="Cook folder name")
+    pt.add_argument("actor", nargs="?", default=None,
+                    help="Only this participant/judge (default: all)")
+    pt.add_argument("--root", default="cooks")
+    pt.add_argument("--no-follow", action="store_false", dest="follow",
+                    help="Print existing log content and exit (don't follow)")
+
     # clean
     pcl = sub.add_parser("clean",
                          help="Tear down docker containers/networks/images for a cook")
@@ -267,6 +297,14 @@ def main(argv: list[str] | None = None) -> int:
         return report(name=args.name, root=Path(args.root))
     if args.cmd == "status":
         return status_cmd(name=args.name, root=Path(args.root), as_json=args.as_json)
+    if args.cmd == "cancel":
+        return cancel_cmd(name=args.name, root=Path(args.root))
+    if args.cmd == "resume":
+        return resume(name=args.name, root=Path(args.root),
+                      force=args.force, profile_override=args.profile)
+    if args.cmd == "tail":
+        return tail_cmd(name=args.name, root=Path(args.root),
+                        actor=args.actor, follow=args.follow)
     if args.cmd == "clean":
         return clean(
             name=args.name, root=Path(args.root),

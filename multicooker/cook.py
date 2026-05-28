@@ -177,7 +177,8 @@ def _write_trace(cook_dir: Path, participant: dict, mode: str,
 
 def _run_participant(cook_dir: Path, project: str, participant: dict,
                      results: dict, timeout_s: int, prompt_text: str,
-                     lock: threading.Lock) -> None:
+                     lock: threading.Lock, *, round_num: int = 1,
+                     phase: str = "cook", mode: str = "cook") -> None:
     name = participant["name"]
     flavor = participant.get("flavor", name)
     service = f"participant-{name}"
@@ -188,9 +189,9 @@ def _run_participant(cook_dir: Path, project: str, participant: dict,
     started_at = datetime.now(timezone.utc).isoformat()
     state.set_cell(cook_dir, name, role="participant", flavor=flavor,
                    state=state.RUNNING, started_at=started_at)
-    state.append_event(cook_dir, "cell.started", phase="cook", actor=name,
-                       payload={"flavor": flavor})
-    print(f"[cook] {name} ({flavor}): launching service {service} "
+    state.append_event(cook_dir, "cell.started", phase=phase, actor=name,
+                       payload={"flavor": flavor, "round": round_num})
+    print(f"[{phase}] {name} ({flavor}): launching service {service} "
           f"(timeout {eff_timeout}s)", flush=True)
     try:
         res: RunResult = compose_runner.run_cell(
@@ -203,16 +204,20 @@ def _run_participant(cook_dir: Path, project: str, participant: dict,
                 "name": name, "flavor": flavor, "status": "start_failed",
                 "error": str(e), "duration_s": 0.0,
             }
-        _write_trace(cook_dir, participant, mode="cook", round_num=1,
+        _write_trace(cook_dir, participant, mode=mode, round_num=round_num,
                      started_at=started_at, res=None, status="start_failed", error=str(e))
         state.set_cell(cook_dir, name, state=state.START_FAILED,
                        finished_at=state.now_iso(), exit_class=state.START_FAILED)
-        state.append_event(cook_dir, "cell.exited", phase="cook", actor=name,
+        state.append_event(cook_dir, "cell.exited", phase=phase, actor=name,
                            payload={"exit_class": state.START_FAILED, "error": str(e)})
-        print(f"[cook] {name}: FAILED to launch: {e}", flush=True)
+        print(f"[{phase}] {name}: FAILED to launch: {e}", flush=True)
         return
 
     status = classify_cell(res)
+    # If a cancel was requested mid-run, the container was stopped externally;
+    # don't mislabel that 137/125 exit as a genuine non_zero_exit.
+    if state.is_cancelled(cook_dir) and status != "ok":
+        status = state.CELL_CANCELLED
     usage = metrics.collect_usage(cook_dir, "participant", name, flavor)
     with lock:
         result = {
@@ -227,17 +232,17 @@ def _run_participant(cook_dir: Path, project: str, participant: dict,
         if usage is not None:
             result["usage"] = usage
         results[name] = result
-    _write_trace(cook_dir, participant, mode="cook", round_num=1,
+    _write_trace(cook_dir, participant, mode=mode, round_num=round_num,
                  started_at=started_at, res=res, status=status, usage=usage)
-    _seal_for_judging(cook_dir, name, exit_class=status, round_num=1)
+    _seal_for_judging(cook_dir, name, exit_class=status, round_num=round_num)
     state.set_cell(cook_dir, name, state=status, finished_at=state.now_iso(),
                    exit_class=status, duration_s=round(res.duration_s, 1))
     if res.rate_limited:
-        state.append_event(cook_dir, "cell.rate_limited", phase="cook", actor=name,
+        state.append_event(cook_dir, "cell.rate_limited", phase=phase, actor=name,
                            payload={"retry_after_s": res.retry_after_s})
-    state.append_event(cook_dir, "cell.exited", phase="cook", actor=name,
+    state.append_event(cook_dir, "cell.exited", phase=phase, actor=name,
                        payload={"exit_class": status, "duration_s": round(res.duration_s, 1)})
-    print(f"[cook] {name}: {status} (exit={res.exit_code}, {res.duration_s:.1f}s)", flush=True)
+    print(f"[{phase}] {name}: {status} (exit={res.exit_code}, {res.duration_s:.1f}s)", flush=True)
 
 
 def _snapshot_creds_or_die(cook_dir: Path, flavors: list[str]) -> int | None:
@@ -304,6 +309,7 @@ def cook(name: str, root: Path,
                     "state": state.PENDING}
         for p in participants
     }
+    state.clear_cancel(cook_dir)  # drop any stale marker from a prior run
     state.init_status(cook_dir, cook=cook_dir.name, phase="cook",
                       state=state.CREATED, cells=init_cells, round_num=1)
     state.append_event(cook_dir, "cook.created", cook=cook_dir.name, phase="cook",
@@ -318,7 +324,7 @@ def cook(name: str, root: Path,
     state.update_status(cook_dir, state=state.PREFLIGHTING)
     rc = _snapshot_creds_or_die(cook_dir, flavors_needed)
     if rc is not None:
-        state.update_status(cook_dir, state=state.FAILED)
+        state.finalize(cook_dir, state.FAILED)
         state.append_event(cook_dir, "cook.failed", phase="cook",
                            payload={"reason": "creds snapshot failed"})
         return rc
@@ -335,7 +341,7 @@ def cook(name: str, root: Path,
         base_images.ensure_built(flavors_needed)
     except Exception as e:                                                   # noqa: BLE001
         print(f"[cook] base image build failed: {e}", flush=True)
-        state.update_status(cook_dir, state=state.FAILED)
+        state.finalize(cook_dir, state.FAILED)
         state.append_event(cook_dir, "cook.failed", phase="cook",
                            payload={"reason": f"base image build failed: {e}"})
         return 2
@@ -345,7 +351,7 @@ def cook(name: str, root: Path,
         compose_runner.build_images(cook_dir, project, services)
     except Exception as e:                                                  # noqa: BLE001
         print(f"[cook] build failed: {e}", flush=True)
-        state.update_status(cook_dir, state=state.FAILED)
+        state.finalize(cook_dir, state.FAILED)
         state.append_event(cook_dir, "cook.failed", phase="cook",
                            payload={"reason": f"build failed: {e}"})
         return 2
@@ -380,8 +386,14 @@ def cook(name: str, root: Path,
         "round": 1,
         "participants": [results[p["name"]] for p in participants if p["name"] in results],
     })
+    # finalize honors a cancel marker written by a concurrent `cancel` process
+    # (atomically, so sealed never clobbers cancelled).
+    final_state = state.finalize(cook_dir, state.SEALED)
+    if final_state == state.CANCELLED:
+        state.append_event(cook_dir, "cook.cancelled", cook=cook_dir.name, phase="cook")
+        print(f"\n[cook] cancelled. partial results at {summary}")
+        return 130
     state.append_event(cook_dir, "seal.finished", phase="cook")
-    state.update_status(cook_dir, state=state.SEALED)
     print(f"\n[cook] done. summary at {summary}")
     print(f"[cook] sealed work trees at {cook_dir}/judging/_inbox/")
     print(f"[cook] next: multicooker judge {name}")

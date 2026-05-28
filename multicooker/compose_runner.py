@@ -158,3 +158,14 @@ def run_cell(
 def teardown(cook_dir: Path, project: str) -> None:
     """Bring the whole compose project down. Safe to call multiple times."""
     _docker_compose(cook_dir, project, "down", "-v", "--remove-orphans", capture=True)
+
+
+def stop_project(cook_dir: Path, project: str, timeout_s: int = 10) -> None:
+    """Stop (not remove) every running service in the project.
+
+    Used by `cancel`: stopping the containers makes a concurrently-running
+    `cook`'s _wait_for_exit return promptly, while leaving the project and its
+    bind-mounted work trees intact for partial-result inspection. The running
+    cook still does its own `down` teardown when its threads finish.
+    """
+    _docker_compose(cook_dir, project, "stop", "-t", str(timeout_s), capture=True)

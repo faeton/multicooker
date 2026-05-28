@@ -354,10 +354,29 @@ The long version: [`HOWTO.md`](HOWTO.md). Internals:
 | `multicooker refine <task>` | Round N+1 with feedback on top of previous out. |
 | `multicooker judge <task>` | Anonymized scoring by all judges. |
 | `multicooker rejudge <task>` | Re-run judging (e.g. after editing `JUDGE_BRIEF.md`). |
-| `multicooker report <task>` | Roll-up into `leaderboard.md`. |
+| `multicooker report <task>` | Roll-up into `leaderboard.md` + `summary.json`. |
+| `multicooker status <task> [--json]` | Current state from `status.json` (live; orchestrator-friendly). |
+| `multicooker cancel <task>` | Stop a running cook, mark it cancelled, keep partial outputs. |
+| `multicooker resume <task> [--force]` | Re-run only the retryable cells of the latest round. |
+| `multicooker tail <task> [actor]` | Stream cell logs, prefixed by actor. |
 | `multicooker diff <task>` | File-level diff between two refine rounds. |
 | `multicooker add-participant <task> NAME[=FLAVOR]` | Add another participant to an existing cook. |
 | `multicooker clean [<task>] [--all]` | `compose down -v --rmi local` + remove `.auth/`. |
+
+### Machine-readable contract (for orchestrators)
+
+Every cook writes, alongside the human `leaderboard.md`:
+
+- `status.json` — live point-in-time snapshot (cook + per-cell state),
+  updated atomically through the run. Read it via `multicooker status`.
+- `events.jsonl` — append-only event log (`cook.created`, `cell.started`,
+  `cell.exited`, `seal.finished`, `judge.*`, `report.written`,
+  `cook.cancel_requested`/`cook.cancelled`, …).
+- `summary.json` — canonical final result after `report`: ranking, per-judge
+  breakdown, run metrics for the latest round, excluded self-flavor pairs.
+
+An external control plane should drive cooks off these files rather than
+parsing stdout or markdown.
 
 ## Status
 

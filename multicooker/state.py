@@ -76,6 +76,10 @@ def summary_path(cook_dir: Path) -> Path:
     return cook_dir / "summary.json"
 
 
+def cancel_marker_path(cook_dir: Path) -> Path:
+    return cook_dir / ".mc-cancel"
+
+
 def _lock_path(cook_dir: Path) -> Path:
     return cook_dir / ".mc-lock"
 
@@ -185,6 +189,91 @@ def set_cell(cook_dir: Path, name: str, *, role: str | None = None,
         st["updated_at"] = now_iso()
         write_json_atomic(status_path(cook_dir), st)
         return st
+
+
+def reset_cell(cook_dir: Path, name: str, *, role: str | None = None,
+               flavor: str | None = None, state: str = PENDING) -> dict:
+    """Replace a cell with a fresh entry, dropping stale run fields.
+
+    set_cell only merges, so it can't clear finished_at/exit_class/duration_s
+    from a prior attempt. resume needs a clean slate before re-running.
+    """
+    with _locked(cook_dir):
+        st = read_status(cook_dir) or {
+            "schema_version": SCHEMA_VERSION, "cells": {},
+        }
+        cells = st.setdefault("cells", {})
+        prev = cells.get(name, {})
+        cells[name] = {
+            "role": role or prev.get("role"),
+            "flavor": flavor or prev.get("flavor"),
+            "state": state,
+        }
+        st["updated_at"] = now_iso()
+        write_json_atomic(status_path(cook_dir), st)
+        return st
+
+
+def mark_unfinished_cancelled(cook_dir: Path) -> None:
+    """Relabel still-running cells to `cancelled` in one locked read-modify-write.
+
+    Doing the read and the writes under a single flock (rather than read-once
+    then per-cell set_cell) closes the window where a cell finishes `ok`
+    between the snapshot and the relabel: we only touch cells that are still
+    unfinished at write time, so a just-completed cell keeps its real state.
+    """
+    with _locked(cook_dir):
+        st = read_status(cook_dir)
+        if not st:
+            return
+        changed = False
+        for cell in st.get("cells", {}).values():
+            if cell.get("state") in (PENDING, STARTING, RUNNING):
+                cell["state"] = CELL_CANCELLED
+                cell["finished_at"] = now_iso()
+                cell["exit_class"] = CELL_CANCELLED
+                changed = True
+        if changed:
+            st["updated_at"] = now_iso()
+            write_json_atomic(status_path(cook_dir), st)
+
+
+def request_cancel(cook_dir: Path) -> None:
+    """Drop the cancellation marker (read by is_cancelled / finalize)."""
+    cook_dir.mkdir(parents=True, exist_ok=True)
+    cancel_marker_path(cook_dir).write_text(now_iso())
+
+
+def is_cancelled(cook_dir: Path) -> bool:
+    return cancel_marker_path(cook_dir).exists()
+
+
+def clear_cancel(cook_dir: Path) -> None:
+    """Remove a stale cancel marker (e.g. before a resume re-run)."""
+    try:
+        cancel_marker_path(cook_dir).unlink()
+    except FileNotFoundError:
+        pass
+
+
+def finalize(cook_dir: Path, sealed_state: str) -> str:
+    """Atomically write the terminal cook state, honoring a cancel marker.
+
+    A separate `cancel` process may set CANCELLED while the runner is blocked
+    in thread.join(); without this the runner's post-join write would clobber
+    it back to `sealed`. Done under the same flock so there's no TOCTOU: the
+    marker check and the state write are one critical section. Returns the
+    state actually written.
+    """
+    with _locked(cook_dir):
+        st = read_status(cook_dir) or {
+            "schema_version": SCHEMA_VERSION, "cells": {},
+        }
+        final = CANCELLED if cancel_marker_path(cook_dir).exists() else sealed_state
+        st["state"] = final
+        st["updated_at"] = now_iso()
+        write_json_atomic(status_path(cook_dir), st)
+        return final
 
 
 def append_event(cook_dir: Path, event: str, *, cook: str | None = None,
