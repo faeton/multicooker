@@ -15,7 +15,6 @@ Docker-only — host-mode is legacy.
 
 from __future__ import annotations
 
-import json
 import shutil
 import threading
 import time
@@ -24,9 +23,9 @@ from pathlib import Path
 
 import yaml
 
-from . import base_images, compose_render, compose_runner, metrics
+from . import base_images, compose_render, compose_runner, metrics, state
 from .cook import _seal_for_judging, _snapshot_creds_or_die, _write_trace
-from .runner_common import RunResult, copytree_clean
+from .runner_common import RunResult, classify_cell, copytree_clean
 
 
 REFINE_PROMPT_HEADER = """\
@@ -157,6 +156,10 @@ def _run_one(cook_dir: Path, project: str, participant: dict,
     metrics.reset_usage_dir(cook_dir, "participant", name, flavor)
     log_dir = cook_dir / "logs" / name
     started_at = datetime.now(timezone.utc).isoformat()
+    state.set_cell(cook_dir, name, role="participant", flavor=flavor,
+                   state=state.RUNNING, started_at=started_at)
+    state.append_event(cook_dir, "cell.started", phase="refine", actor=name,
+                       payload={"flavor": flavor, "round": round_num})
     print(f"[refine] {name} ({flavor}): launching service {service} "
           f"(timeout {eff_timeout}s)", flush=True)
     try:
@@ -167,19 +170,18 @@ def _run_one(cook_dir: Path, project: str, participant: dict,
     except Exception as e:                                                  # noqa: BLE001
         with lock:
             results[name] = {
-                "name": name, "flavor": flavor, "status": "error",
+                "name": name, "flavor": flavor, "status": "start_failed",
                 "error": str(e), "duration_s": 0.0,
             }
         _write_trace(cook_dir, participant, mode="refine", round_num=round_num,
-                     started_at=started_at, res=None, status="error", error=str(e))
+                     started_at=started_at, res=None, status="start_failed", error=str(e))
+        state.set_cell(cook_dir, name, state=state.START_FAILED,
+                       finished_at=state.now_iso(), exit_class=state.START_FAILED)
+        state.append_event(cook_dir, "cell.exited", phase="refine", actor=name,
+                           payload={"exit_class": state.START_FAILED, "error": str(e)})
         print(f"[refine] {name}: FAILED to launch: {e}", flush=True)
         return
-    status = (
-        "rate_limited" if res.rate_limited
-        else "timed_out" if res.timed_out
-        else "ok" if res.exit_code == 0
-        else "non_zero_exit"
-    )
+    status = classify_cell(res)
     usage = metrics.collect_usage(cook_dir, "participant", name, flavor)
     with lock:
         result = {
@@ -196,7 +198,14 @@ def _run_one(cook_dir: Path, project: str, participant: dict,
         results[name] = result
     _write_trace(cook_dir, participant, mode="refine", round_num=round_num,
                  started_at=started_at, res=res, status=status, usage=usage)
-    _seal_for_judging(cook_dir, name)
+    _seal_for_judging(cook_dir, name, exit_class=status, round_num=round_num)
+    state.set_cell(cook_dir, name, state=status, finished_at=state.now_iso(),
+                   exit_class=status, duration_s=round(res.duration_s, 1))
+    if res.rate_limited:
+        state.append_event(cook_dir, "cell.rate_limited", phase="refine", actor=name,
+                           payload={"retry_after_s": res.retry_after_s})
+    state.append_event(cook_dir, "cell.exited", phase="refine", actor=name,
+                       payload={"exit_class": status, "duration_s": round(res.duration_s, 1)})
     print(f"[refine] {name}: {status} (exit={res.exit_code}, {res.duration_s:.1f}s)",
           flush=True)
 
@@ -253,14 +262,26 @@ def refine(name: str, root: Path,
     print(f"[refine] snapshotted round {prev_round} → {snap}", flush=True)
 
     # Stamp metadata.
-    (cook_dir / f"REFINE_{round_num}.json").write_text(json.dumps({
+    state.write_json_atomic(cook_dir / f"REFINE_{round_num}.json", {
         "started_at": datetime.now(timezone.utc).isoformat(),
         "round_num": round_num,
         "prev_round": prev_round,
         "participants": [p["name"] for p in participants],
         "timeout_s": timeout_s,
         "snapshot": str(snap),
-    }, indent=2))
+    })
+
+    # Advance the machine-readable contract to this round.
+    refine_cells = {
+        p["name"]: {"role": "participant",
+                    "flavor": p.get("flavor", p["name"]),
+                    "state": state.PENDING}
+        for p in participants
+    }
+    state.update_status(cook_dir, cook=cook_dir.name, phase="refine",
+                        state=state.COOKING, round=round_num, cells=refine_cells)
+    state.append_event(cook_dir, "phase.started", cook=cook_dir.name, phase="refine",
+                       payload={"round": round_num})
 
     project = f"mc-{cfg['name']}".lower().replace("_", "-")
     flavors_needed = sorted({p.get("flavor", p["name"]) for p in participants})
@@ -318,12 +339,16 @@ def refine(name: str, root: Path,
         print(f"[refine] teardown warning: {e}", flush=True)
 
     summary = cook_dir / f"REFINE_{round_num}_RESULT.json"
-    summary.write_text(json.dumps({
+    state.write_json_atomic(summary, {
         "finished_at": datetime.now(timezone.utc).isoformat(),
         "round_num": round_num,
+        "round": round_num,
         "participants": [results[p["name"]] for p in participants
                          if p["name"] in results],
-    }, indent=2))
+    })
+    state.append_event(cook_dir, "seal.finished", phase="refine",
+                       payload={"round": round_num})
+    state.update_status(cook_dir, state=state.SEALED)
     print(f"\n[refine] done. round {round_num} summary at {summary}")
     print(f"[refine] sealed work trees at {cook_dir}/judging/_inbox/")
     print(f"[refine] previous round preserved at {snap}")

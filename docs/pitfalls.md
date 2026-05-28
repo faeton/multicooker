@@ -123,5 +123,8 @@ sure the dimensions match by id, weight, and scale.
 
 `claude` writes "Claude is thinking..." etc. to stderr. If those
 logs reach the judge — anonymization is blown. **Rule:** into
-`judging/_inbox/<p>/` we copy **only the worktree** of the
-participant, no `logs/`.
+`judging/_inbox/<p>/` we copy **only `out/`** plus a sanitized
+`meta.json` (`exit_class` + `round`, never flavor/model/name). We
+do **not** copy `logs/`, `PROMPT.txt`, `trace.json`, or `usage/` —
+those name the flavor and the judge tree is built straight from
+`_inbox/<p>/`.

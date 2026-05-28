@@ -64,32 +64,39 @@ def _container_id(cook_dir: Path, project: str, service: str) -> str:
 
 
 def _wait_for_exit(cook_dir: Path, project: str, service: str,
-                   timeout_s: int) -> tuple[int, bool]:
-    """Block until the service container exits or timeout. Returns (exit_code, timed_out)."""
+                   timeout_s: int) -> tuple[int, bool, bool]:
+    """Block until the service container exits or timeout.
+
+    Returns (exit_code, timed_out, oom_killed).
+    """
     deadline = time.time() + timeout_s
     cid = _container_id(cook_dir, project, service)
     if not cid:
         # Container went away immediately (build/start failure).
-        return 125, False
+        return 125, False, False
     while True:
         # `docker inspect` is faster than `compose ps` for one container.
         insp = subprocess.run(
-            ["docker", "inspect", "-f", "{{.State.Status}}|{{.State.ExitCode}}", cid],
+            ["docker", "inspect", "-f",
+             "{{.State.Status}}|{{.State.ExitCode}}|{{.State.OOMKilled}}", cid],
             capture_output=True, text=True,
         )
         if insp.returncode != 0:
             # Container removed out from under us — assume crash.
-            return 137, False
-        status, exit_code = insp.stdout.strip().split("|", 1)
+            return 137, False, False
+        parts = insp.stdout.strip().split("|")
+        status = parts[0] if parts else ""
+        exit_code = parts[1] if len(parts) > 1 else "1"
+        oom = len(parts) > 2 and parts[2].strip().lower() == "true"
         if status not in ("running", "created", "restarting"):
             try:
-                return int(exit_code), False
+                return int(exit_code), False, oom
             except ValueError:
-                return 1, False
+                return 1, False, oom
         if time.time() >= deadline:
             print(f"[compose] {service}: timeout {timeout_s}s — stopping container", flush=True)
             _docker_compose(cook_dir, project, "stop", "-t", "10", service)
-            return 124, True
+            return 124, True, False
         time.sleep(2)
 
 
@@ -119,12 +126,13 @@ def run_cell(
             flavor=flavor, exit_code=res_up.returncode,
             duration_s=time.time() - started, timed_out=False,
             stdout_path=stdout_path, stderr_path=stderr_path,
-            rate_limit_evidence=err[:400],
+            rate_limit_evidence=err[:400], start_failed=True,
         )
 
     log_proc = _tail_logs(cook_dir, project, service, stdout_path)
     try:
-        exit_code, timed_out = _wait_for_exit(cook_dir, project, service, timeout_s)
+        exit_code, timed_out, oom_killed = _wait_for_exit(
+            cook_dir, project, service, timeout_s)
     finally:
         try:
             log_proc.terminate()
@@ -143,7 +151,7 @@ def run_cell(
         flavor=flavor, exit_code=exit_code, duration_s=duration,
         timed_out=timed_out, stdout_path=stdout_path, stderr_path=stderr_path,
         rate_limited=rl, retry_after_s=retry_after,
-        rate_limit_evidence=evidence,
+        rate_limit_evidence=evidence, oom_killed=oom_killed,
     )
 
 

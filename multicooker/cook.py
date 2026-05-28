@@ -29,8 +29,8 @@ from pathlib import Path
 
 import yaml
 
-from . import base_images, compose_render, compose_runner, creds, metrics
-from .runner_common import RunResult
+from . import base_images, compose_render, compose_runner, creds, metrics, state
+from .runner_common import RunResult, classify_cell
 
 
 PROMPT_TEMPLATE = """\
@@ -67,21 +67,50 @@ Begin.
 """
 
 
-def _seal_for_judging(cook_dir: Path, participant: str) -> None:
-    """Copy work/<p>/ into judging/_inbox/<p>/ as a frozen artefact."""
+def _seal_for_judging(cook_dir: Path, participant: str, *,
+                      exit_class: str | None = None,
+                      round_num: int | None = None) -> None:
+    """Copy ONLY work/<p>/out/ into judging/_inbox/<p>/out/, plus a sanitized
+    meta.json.
+
+    Deliberately does NOT copy PROMPT.txt, trace.json, usage/, or logs: those
+    carry the participant's flavor, model, and name, and judge.py copytrees
+    _inbox/<p>/ straight into the blind submissions/<letter>/. Copying the
+    whole work tree (the old behavior) leaked identity into judge input.
+
+    The meta.json that IS judge-visible is curated: exit_class + round only,
+    never flavor/model/name. When exit_class/round aren't passed (e.g.
+    rejudge, which only has a participant name), they're read host-side from
+    work/<p>/trace.json — trace.json itself is never sealed.
+    """
     from .runner_common import copytree_clean
     src = cook_dir / "work" / participant
     dst = cook_dir / "judging" / "_inbox" / participant
     if dst.exists():
         shutil.rmtree(dst)
     dst.mkdir(parents=True, exist_ok=True)
-    for item in src.iterdir():
-        if item.is_symlink():
-            continue
-        if item.is_dir():
-            copytree_clean(item, dst / item.name)
-        else:
-            shutil.copy2(item, dst / item.name)
+    out_src = src / "out"
+    if out_src.exists():
+        copytree_clean(out_src, dst / "out")
+    else:
+        (dst / "out").mkdir(parents=True, exist_ok=True)
+    if exit_class is None or round_num is None:
+        trace = src / "trace.json"
+        if trace.exists():
+            try:
+                t = json.loads(trace.read_text())
+                if exit_class is None:
+                    exit_class = t.get("status")
+                if round_num is None:
+                    round_num = t.get("round_num")
+            except (json.JSONDecodeError, OSError):
+                pass
+    meta: dict = {"schema_version": 1}
+    if exit_class is not None:
+        meta["exit_class"] = exit_class
+    if round_num is not None:
+        meta["round"] = round_num
+    (dst / "meta.json").write_text(json.dumps(meta, indent=2))
 
 
 def _setup_worktree(cook_dir: Path, participant: str, prompt_text: str) -> Path:
@@ -157,6 +186,10 @@ def _run_participant(cook_dir: Path, project: str, participant: dict,
     metrics.reset_usage_dir(cook_dir, "participant", name, flavor)
     log_dir = cook_dir / "logs" / name
     started_at = datetime.now(timezone.utc).isoformat()
+    state.set_cell(cook_dir, name, role="participant", flavor=flavor,
+                   state=state.RUNNING, started_at=started_at)
+    state.append_event(cook_dir, "cell.started", phase="cook", actor=name,
+                       payload={"flavor": flavor})
     print(f"[cook] {name} ({flavor}): launching service {service} "
           f"(timeout {eff_timeout}s)", flush=True)
     try:
@@ -167,20 +200,19 @@ def _run_participant(cook_dir: Path, project: str, participant: dict,
     except Exception as e:                                                  # noqa: BLE001
         with lock:
             results[name] = {
-                "name": name, "flavor": flavor, "status": "error",
+                "name": name, "flavor": flavor, "status": "start_failed",
                 "error": str(e), "duration_s": 0.0,
             }
         _write_trace(cook_dir, participant, mode="cook", round_num=1,
-                     started_at=started_at, res=None, status="error", error=str(e))
+                     started_at=started_at, res=None, status="start_failed", error=str(e))
+        state.set_cell(cook_dir, name, state=state.START_FAILED,
+                       finished_at=state.now_iso(), exit_class=state.START_FAILED)
+        state.append_event(cook_dir, "cell.exited", phase="cook", actor=name,
+                           payload={"exit_class": state.START_FAILED, "error": str(e)})
         print(f"[cook] {name}: FAILED to launch: {e}", flush=True)
         return
 
-    status = (
-        "rate_limited" if res.rate_limited
-        else "timed_out" if res.timed_out
-        else "ok" if res.exit_code == 0
-        else "non_zero_exit"
-    )
+    status = classify_cell(res)
     usage = metrics.collect_usage(cook_dir, "participant", name, flavor)
     with lock:
         result = {
@@ -197,7 +229,14 @@ def _run_participant(cook_dir: Path, project: str, participant: dict,
         results[name] = result
     _write_trace(cook_dir, participant, mode="cook", round_num=1,
                  started_at=started_at, res=res, status=status, usage=usage)
-    _seal_for_judging(cook_dir, name)
+    _seal_for_judging(cook_dir, name, exit_class=status, round_num=1)
+    state.set_cell(cook_dir, name, state=status, finished_at=state.now_iso(),
+                   exit_class=status, duration_s=round(res.duration_s, 1))
+    if res.rate_limited:
+        state.append_event(cook_dir, "cell.rate_limited", phase="cook", actor=name,
+                           payload={"retry_after_s": res.retry_after_s})
+    state.append_event(cook_dir, "cell.exited", phase="cook", actor=name,
+                       payload={"exit_class": status, "duration_s": round(res.duration_s, 1)})
     print(f"[cook] {name}: {status} (exit={res.exit_code}, {res.duration_s:.1f}s)", flush=True)
 
 
@@ -256,15 +295,32 @@ def cook(name: str, root: Path,
         "host": os.uname().nodename,
         "mode": "docker",
     }
-    (cook_dir / "RUN.json").write_text(json.dumps(run_meta, indent=2))
+    state.write_json_atomic(cook_dir / "RUN.json", run_meta)
+
+    # Initialize the machine-readable contract: status.json + events.jsonl.
+    init_cells = {
+        p["name"]: {"role": "participant",
+                    "flavor": p.get("flavor", p["name"]),
+                    "state": state.PENDING}
+        for p in participants
+    }
+    state.init_status(cook_dir, cook=cook_dir.name, phase="cook",
+                      state=state.CREATED, cells=init_cells, round_num=1)
+    state.append_event(cook_dir, "cook.created", cook=cook_dir.name, phase="cook",
+                       payload={"participants": [p["name"] for p in participants]})
+    state.append_event(cook_dir, "phase.started", cook=cook_dir.name, phase="cook")
 
     brief_text = (cook_dir / "BRIEF.md").read_text()
     prompt_text = PROMPT_TEMPLATE + "\n\n---\n\n# BRIEF.md\n\n" + brief_text
 
     print(f"[cook] project={project} flavors={flavors_needed}", flush=True)
     print("[cook] snapshotting creds...", flush=True)
+    state.update_status(cook_dir, state=state.PREFLIGHTING)
     rc = _snapshot_creds_or_die(cook_dir, flavors_needed)
     if rc is not None:
+        state.update_status(cook_dir, state=state.FAILED)
+        state.append_event(cook_dir, "cook.failed", phase="cook",
+                           payload={"reason": "creds snapshot failed"})
         return rc
 
     compose_render.render_compose(cook_dir, cfg, profile_override=profile_override)
@@ -273,10 +329,15 @@ def cook(name: str, root: Path,
     for p in participants:
         _setup_worktree(cook_dir, p["name"], prompt_text)
 
+    state.update_status(cook_dir, state=state.BUILDING)
+    state.append_event(cook_dir, "image.build.started", phase="cook")
     try:
         base_images.ensure_built(flavors_needed)
     except Exception as e:                                                   # noqa: BLE001
         print(f"[cook] base image build failed: {e}", flush=True)
+        state.update_status(cook_dir, state=state.FAILED)
+        state.append_event(cook_dir, "cook.failed", phase="cook",
+                           payload={"reason": f"base image build failed: {e}"})
         return 2
 
     services = [f"participant-{p['name']}" for p in participants]
@@ -284,7 +345,12 @@ def cook(name: str, root: Path,
         compose_runner.build_images(cook_dir, project, services)
     except Exception as e:                                                  # noqa: BLE001
         print(f"[cook] build failed: {e}", flush=True)
+        state.update_status(cook_dir, state=state.FAILED)
+        state.append_event(cook_dir, "cook.failed", phase="cook",
+                           payload={"reason": f"build failed: {e}"})
         return 2
+    state.append_event(cook_dir, "image.build.finished", phase="cook")
+    state.update_status(cook_dir, state=state.COOKING)
 
     results: dict[str, dict] = {}
     lock = threading.Lock()
@@ -309,10 +375,13 @@ def cook(name: str, root: Path,
         print(f"[cook] teardown warning: {e}", flush=True)
 
     summary = cook_dir / "RUN_RESULT.json"
-    summary.write_text(json.dumps({
+    state.write_json_atomic(summary, {
         "finished_at": datetime.now(timezone.utc).isoformat(),
+        "round": 1,
         "participants": [results[p["name"]] for p in participants if p["name"] in results],
-    }, indent=2))
+    })
+    state.append_event(cook_dir, "seal.finished", phase="cook")
+    state.update_status(cook_dir, state=state.SEALED)
     print(f"\n[cook] done. summary at {summary}")
     print(f"[cook] sealed work trees at {cook_dir}/judging/_inbox/")
     print(f"[cook] next: multicooker judge {name}")

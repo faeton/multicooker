@@ -27,6 +27,28 @@ class RunResult:
     retry_after_s: int = 0
     rate_limit_evidence: str = ""
     attempts: int = 1
+    start_failed: bool = False
+    oom_killed: bool = False
+
+
+def classify_cell(res: "RunResult") -> str:
+    """Map a RunResult to a contract cell state (see state.py constants).
+
+    Order matters: start/oom/rate-limit/timeout are more specific than a bare
+    non-zero exit and must win. Kept here (next to RunResult) so cook and
+    refine classify identically.
+    """
+    if res.start_failed:
+        return "start_failed"
+    if res.oom_killed:
+        return "oom_killed"
+    if res.rate_limited:
+        return "rate_limited"
+    if res.timed_out:
+        return "timed_out"
+    if res.exit_code == 0:
+        return "ok"
+    return "non_zero_exit"
 
 
 _RL_PATTERNS = {

@@ -33,6 +33,11 @@ KNOWN_FLAVORS = frozenset({"claude", "codex", "gemini", "grok", "dummy"})
 # import-free of subprocess-using modules (cheaper unit tests).
 VALID_PROFILES = frozenset({"auto", "large", "medium", "small"})
 
+# Mirror of judging_policy.VALID_POLICIES (inlined for the same reason).
+VALID_JUDGING_POLICIES = frozenset(
+    {"require_distinct_flavor", "warn", "allow_self"}
+)
+
 
 def _is_number(x: Any) -> bool:
     return isinstance(x, (int, float)) and not isinstance(x, bool)
@@ -169,6 +174,21 @@ def _validate_rubric(rubric: Any, errors: list[str]) -> None:
         )
 
 
+def _validate_judging(judging: Any, errors: list[str]) -> None:
+    if judging is None:
+        return
+    if not isinstance(judging, dict):
+        errors.append(f"judging: must be a mapping (got {type(judging).__name__})")
+        return
+    if "policy" in judging:
+        pol = judging["policy"]
+        if not isinstance(pol, str) or pol not in VALID_JUDGING_POLICIES:
+            errors.append(
+                f"judging.policy: must be one of {sorted(VALID_JUDGING_POLICIES)} "
+                f"(got {pol!r})"
+            )
+
+
 def validate(cfg: Any) -> list[str]:
     """Return a list of human-readable validation errors. Empty = valid."""
     errors: list[str] = []
@@ -207,6 +227,7 @@ def validate(cfg: Any) -> list[str]:
             _validate_actor(j, "judge", i, seen_j, errors)
 
     _validate_rubric(cfg.get("rubric"), errors)
+    _validate_judging(cfg.get("judging"), errors)
 
     if "resources" in cfg:
         _validate_resources(cfg["resources"], "resources", errors)

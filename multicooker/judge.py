@@ -29,8 +29,9 @@ from pathlib import Path
 
 import yaml
 
-from . import base_images, compose_render, compose_runner, metrics
+from . import base_images, compose_render, compose_runner, metrics, state
 from .cook import _snapshot_creds_or_die
+from .judging_policy import judging_policy
 
 
 JUDGE_PROMPT_TEMPLATE = """\
@@ -140,6 +141,9 @@ def _run_judge(cook_dir: Path, project: str, judge_cfg: dict,
     log_dir = cook_dir / "judging" / "_logs" / jname
     (work / "PROMPT.txt").write_text(JUDGE_PROMPT_TEMPLATE)
     service = f"judge-{jname}"
+    state.set_cell(cook_dir, jname, role="judge", flavor=flavor,
+                   state=state.RUNNING, started_at=state.now_iso())
+    state.append_event(cook_dir, "judge.started", phase="judge", actor=jname)
     try:
         res = compose_runner.run_cell(
             cook_dir=cook_dir, project=project, service=service,
@@ -147,6 +151,10 @@ def _run_judge(cook_dir: Path, project: str, judge_cfg: dict,
         )
     except Exception as e:                                                  # noqa: BLE001
         print(f"[judge] {jname}: failed to launch: {e}", flush=True)
+        state.set_cell(cook_dir, jname, state=state.START_FAILED,
+                       finished_at=state.now_iso(), exit_class=state.START_FAILED)
+        state.append_event(cook_dir, "judge.finished", phase="judge", actor=jname,
+                           payload={"ok": False, "status": "start_failed"})
         with lock:
             results[jname] = {
                 "name": jname, "flavor": flavor, "ok": False,
@@ -172,6 +180,10 @@ def _run_judge(cook_dir: Path, project: str, judge_cfg: dict,
             if usage is not None:
                 result["usage"] = usage
             results[jname] = result
+        state.set_cell(cook_dir, jname, state=state.NON_ZERO_EXIT,
+                       finished_at=state.now_iso(), exit_class="no_scores")
+        state.append_event(cook_dir, "judge.finished", phase="judge", actor=jname,
+                           payload={"ok": False, "status": "no_scores"})
         return
     try:
         scores = json.loads((outbox / "scores.json").read_text())
@@ -189,6 +201,10 @@ def _run_judge(cook_dir: Path, project: str, judge_cfg: dict,
             if usage is not None:
                 result["usage"] = usage
             results[jname] = result
+        state.set_cell(cook_dir, jname, state=state.NON_ZERO_EXIT,
+                       finished_at=state.now_iso(), exit_class="invalid_json")
+        state.append_event(cook_dir, "judge.finished", phase="judge", actor=jname,
+                           payload={"ok": False, "status": "invalid_json"})
         return
     scores = _normalize_scores(scores)
     deanon = {mapping.get(k, k): v for k, v in scores.items()}
@@ -206,6 +222,11 @@ def _run_judge(cook_dir: Path, project: str, judge_cfg: dict,
         if usage is not None:
             result["usage"] = usage
         results[jname] = result
+    state.set_cell(cook_dir, jname, state=state.OK,
+                   finished_at=state.now_iso(), exit_class="ok",
+                   duration_s=round(res.duration_s, 1))
+    state.append_event(cook_dir, "judge.finished", phase="judge", actor=jname,
+                       payload={"ok": True, "count": len(deanon)})
 
 
 def _normalize_scores(scores: dict) -> dict:
@@ -309,6 +330,10 @@ def judge(name: str, root: Path,
     )
     print(f"[judge] anonymized: {mapping}", flush=True)
 
+    state.update_status(cook_dir, cook=cook_dir.name, phase="judge",
+                        state=state.JUDGING)
+    state.append_event(cook_dir, "phase.started", cook=cook_dir.name, phase="judge")
+
     timeout_s = int(cfg.get("judge_timeout_s", 15 * 60))
 
     project = f"mc-{cfg['name']}".lower().replace("_", "-")
@@ -325,17 +350,26 @@ def judge(name: str, root: Path,
         print(f"[judge] base image build failed: {e}", flush=True)
         return 2
 
-    # Anti-self-judging warnings (anonymization mitigates; this only warns).
+    # Anti-self-judge policy. Anonymization mitigates self-bias; this decides
+    # whether same-flavor scores are dropped from aggregation (report applies
+    # the exclusion). See judging_policy.py.
+    policy = judging_policy(cfg)
     for j in judges_cfg:
         jname = j["name"]
         flavor = j.get("flavor", jname)
         same_flavor_participants = [p["name"] for p in participants
                                     if p.get("flavor", p["name"]) == flavor]
-        if same_flavor_participants:
+        if not same_flavor_participants:
+            continue
+        if policy == "require_distinct_flavor":
+            print(f"[judge] policy=require_distinct_flavor: {jname} ({flavor}) "
+                  f"scores for same-flavor {same_flavor_participants} will be "
+                  f"EXCLUDED from the leaderboard.", flush=True)
+        elif policy == "warn":
             print(f"[judge] WARN: {jname} ({flavor}) is same flavor as "
                   f"participants {same_flavor_participants}. Anonymization is on, "
-                  f"but for full anti-bias add a different-flavor judge.",
-                  flush=True)
+                  f"but for full anti-bias add a different-flavor judge or set "
+                  f"judging.policy: require_distinct_flavor.", flush=True)
 
     # Build all judge images upfront so threaded runs don't serialize on docker build.
     services = [f"judge-{j['name']}" for j in judges_cfg]
@@ -376,10 +410,11 @@ def judge(name: str, root: Path,
         print(f"[judge] teardown warning: {e}", flush=True)
 
     summary = cook_dir / "JUDGE_RESULT.json"
-    summary.write_text(json.dumps({
-        "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    state.write_json_atomic(summary, {
+        "finished_at": state.now_iso(),
+        "policy": policy,
         "judges": [results[j["name"]] for j in judges_cfg if j["name"] in results],
-    }, indent=2))
+    })
     print(f"[judge] summary at {summary}", flush=True)
 
     any_score = any(r.get("ok") for r in results.values())

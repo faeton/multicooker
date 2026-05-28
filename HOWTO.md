@@ -118,7 +118,7 @@ After `multicooker judge my-task`:
 
 ```
 cooks/my-task/judging/
-├── _inbox/<p>/                       # frozen copy of work/<p>/
+├── _inbox/<p>/                       # sealed out/ + sanitized meta.json
 ├── _judge_input/                     # anonymized input for the judges
 │   └── submissions/{A,B,C}/
 ├── _logs/<judge-name>/               # judge CLI logs
@@ -145,9 +145,10 @@ for participant in brief.participants:
         run host CLI(<flavor>) in work/<participant>/ with prompt = brief
         capture stdout/stderr to logs/<participant>/
         on rate-limit: record evidence, return (don't sleep — others are working)
-        on success/timeout: copy work/<participant>/ → judging/_inbox/<participant>/
+        on success/timeout: seal work/<participant>/out/ + meta.json → judging/_inbox/<participant>/
+        update status.json + append events.jsonl
 join all threads
-write RUN_RESULT.json
+write RUN_RESULT.json (atomic) + status.json state=sealed
 ```
 
 Specific technical nuances:

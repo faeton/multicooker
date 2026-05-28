@@ -69,6 +69,21 @@ def test_full_pipeline_on_dummy(tmp_path: Path):
     assert res.returncode == 0, _fail(res)
     assert (cook / "RUN_RESULT.json").exists()
 
+    # Machine contract: status.json + events.jsonl exist and reflect the cook.
+    import json as _json
+    status = _json.loads((cook / "status.json").read_text())
+    assert status["state"] == "sealed"
+    assert set(status["cells"]) == {"a", "b"}
+    assert status["cells"]["a"]["state"] == "ok"
+    events = [_json.loads(ln) for ln in
+              (cook / "events.jsonl").read_text().splitlines()]
+    event_names = {e["event"] for e in events}
+    assert {"cook.created", "cell.started", "cell.exited"} <= event_names
+
+    # Sealed inbox must not leak flavor: only out/ + meta.json, no PROMPT/trace.
+    sealed_a = cook / "judging" / "_inbox" / "a"
+    assert sorted(p.name for p in sealed_a.iterdir()) == ["meta.json", "out"]
+
     # 3. judge
     res = _run(["judge", cook.name, "--root", str(root)], cwd=REPO_ROOT)
     assert res.returncode == 0, _fail(res)
@@ -81,6 +96,18 @@ def test_full_pipeline_on_dummy(tmp_path: Path):
     assert "| a |" in leaderboard
     assert "| b |" in leaderboard
     assert "dummy-judge" in leaderboard
+
+    # summary.json is the machine-readable final result.
+    summary = _json.loads((cook / "summary.json").read_text())
+    assert summary["cook"] == cook.name
+    assert {r["participant"] for r in summary["ranking"]} == {"a", "b"}
+    assert summary["judges_used"] == ["dummy-judge"]
+
+    # status command returns valid JSON and exit 0.
+    res = _run(["status", cook.name, "--root", str(root), "--json"], cwd=REPO_ROOT)
+    assert res.returncode == 0, _fail(res)
+    st = _json.loads(res.stdout)
+    assert st["state"] == "reported"
 
     # trace.json was written for each participant.
     for pname in ("a", "b"):

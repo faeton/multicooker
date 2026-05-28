@@ -17,6 +17,7 @@ from .refine import refine
 from .rejudge import rejudge
 from .doctor import doctor
 from .diff_rounds import diff_rounds
+from .status_cmd import status_cmd
 from . import base_images
 
 
@@ -174,6 +175,14 @@ def main(argv: list[str] | None = None) -> int:
     pr.add_argument("name")
     pr.add_argument("--root", default="cooks")
 
+    # status
+    pst = sub.add_parser("status",
+                         help="Show a cook's current state (reads status.json)")
+    pst.add_argument("name", help="Cook folder name")
+    pst.add_argument("--root", default="cooks")
+    pst.add_argument("--json", action="store_true", dest="as_json",
+                     help="Emit the raw status.json snapshot as JSON")
+
     # clean
     pcl = sub.add_parser("clean",
                          help="Tear down docker containers/networks/images for a cook")
@@ -256,6 +265,8 @@ def main(argv: list[str] | None = None) -> int:
         )
     if args.cmd == "report":
         return report(name=args.name, root=Path(args.root))
+    if args.cmd == "status":
+        return status_cmd(name=args.name, root=Path(args.root), as_json=args.as_json)
     if args.cmd == "clean":
         return clean(
             name=args.name, root=Path(args.root),

@@ -151,3 +151,24 @@ def test_resources_invalid_pids() -> None:
     cfg["participants"][0]["resources"] = {"pids_limit": -1}
     errs = validate(cfg)
     assert any("pids_limit" in e for e in errs)
+
+
+def test_judging_policy_valid() -> None:
+    for pol in ("require_distinct_flavor", "warn", "allow_self"):
+        cfg = _good()
+        cfg["judging"] = {"policy": pol}
+        assert validate(cfg) == []
+
+
+def test_judging_policy_invalid() -> None:
+    cfg = _good()
+    cfg["judging"] = {"policy": "be_nice"}
+    errs = validate(cfg)
+    assert any("judging.policy" in e for e in errs)
+
+
+def test_judging_must_be_mapping() -> None:
+    cfg = _good()
+    cfg["judging"] = ["nope"]
+    errs = validate(cfg)
+    assert any("judging" in e for e in errs)
