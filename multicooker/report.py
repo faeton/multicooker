@@ -274,6 +274,9 @@ def report(name: str, root: Path) -> int:
                    excluded=excluded, excluded_recorded=excluded_recorded,
                    jr=jr)
 
+    from . import artifacts
+    artifacts.build_manifest(cook_dir)
+
     state.append_event(cook_dir, "report.written", cook=cook_dir.name, phase="report",
                        payload={"round": round_num})
     state.update_status(cook_dir, cook=cook_dir.name, phase="report",
@@ -281,6 +284,7 @@ def report(name: str, root: Path) -> int:
 
     print(f"[report] written: {leaderboard}")
     print(f"[report] summary: {state.summary_path(cook_dir)}")
+    print(f"[report] artifacts: {artifacts.artifacts_path(cook_dir)}")
     print()
     print("\n".join(out[:20]))
     return 0
@@ -329,6 +333,6 @@ def _write_summary(cook_dir: Path, *, round_num: int, policy: str,
         "per_judge": per_judge_out,
         "judge_run": jr.get("judges", []),
         "excluded_pairs": excluded_recorded,
-        "artifacts": {"leaderboard": "leaderboard.md"},
+        "artifacts": {"leaderboard": "leaderboard.md", "manifest": "artifacts.json"},
     }
     state.write_json_atomic(state.summary_path(cook_dir), summary)

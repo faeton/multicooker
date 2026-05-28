@@ -22,6 +22,8 @@ from .cancel_cmd import cancel_cmd
 from .resume_cmd import resume
 from .tail_cmd import tail_cmd
 from .lint import lint as lint_cook
+from .artifacts import artifacts_cmd
+from .archive_cmd import archive
 from . import base_images
 
 
@@ -186,6 +188,27 @@ def main(argv: list[str] | None = None) -> int:
     pli.add_argument("name", help="Cook folder name")
     pli.add_argument("--root", default="cooks")
 
+    # artifacts
+    par = sub.add_parser("artifacts",
+                         help="Build/show artifacts.json (visibility-tagged file manifest)")
+    par.add_argument("name", help="Cook folder name")
+    par.add_argument("--root", default="cooks")
+    par.add_argument("--json", action="store_true", dest="as_json",
+                     help="Emit the manifest as JSON")
+
+    # archive
+    pac = sub.add_parser("archive",
+                         help="Copy only publishable artifacts into a shareable "
+                              "dir/tarball (never .auth or judge mappings)")
+    pac.add_argument("name", help="Cook folder name")
+    pac.add_argument("--root", default="cooks")
+    pac.add_argument("--out", default=None,
+                     help="Output path (default: cooks/<task>/archive or .tar.gz)")
+    pac.add_argument("--include-operator", action="store_true",
+                     help="Also include operator files (logs, traces, results)")
+    pac.add_argument("--format", choices=["dir", "tar"], default="dir",
+                     dest="fmt", help="Output as a directory (default) or .tar.gz")
+
     # status
     pst = sub.add_parser("status",
                          help="Show a cook's current state (reads status.json)")
@@ -305,6 +328,11 @@ def main(argv: list[str] | None = None) -> int:
         return report(name=args.name, root=Path(args.root))
     if args.cmd == "lint":
         return lint_cook(name=args.name, root=Path(args.root))
+    if args.cmd == "artifacts":
+        return artifacts_cmd(name=args.name, root=Path(args.root), as_json=args.as_json)
+    if args.cmd == "archive":
+        return archive(name=args.name, root=Path(args.root), out=args.out,
+                       include_operator=args.include_operator, fmt=args.fmt)
     if args.cmd == "status":
         return status_cmd(name=args.name, root=Path(args.root), as_json=args.as_json)
     if args.cmd == "cancel":

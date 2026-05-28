@@ -44,6 +44,17 @@ Notable changes to multicooker. Newest first.
   (and that `JUDGE_BRIEF.md` exists when a rubric + judges are defined).
   `doctor` runs it; `cook` and `refine` refuse to start if it fails, so
   a drifted rubric is caught before any container work.
+- **`artifacts.json` manifest + `multicooker archive`.** `report` now
+  writes `artifacts.json`, tagging every cook file with a visibility
+  class — `public` (leaderboard, summary, participant `out/`, judge
+  reviews), `operator` (logs/traces/results), `secret` (`.auth/`),
+  `host_only` (judge mappings, sealed inbox, judge work dirs).
+  Classification is denylist-first and unknown paths default to
+  `operator`, never `public`. `multicooker artifacts <task>` rebuilds
+  it on demand; `multicooker archive <task>` copies only `public` files
+  (or `--include-operator`) into a shareable dir/`--format tar`,
+  skipping symlinks and verifying every path stays inside the cook —
+  `.auth/` and `_mapping.json` are never copied.
 - **Strict judge schema.** `judging.strict_schema: true` in `brief.yaml`
   makes a judge whose `scores.json` doesn't match the canonical
   `{label: {dimensions: {dim: int}}}` shape record `malformed_schema`

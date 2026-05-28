@@ -355,7 +355,9 @@ The long version: [`HOWTO.md`](HOWTO.md). Internals:
 | `multicooker judge <task>` | Anonymized scoring by all judges. |
 | `multicooker rejudge <task>` | Re-run judging (e.g. after editing `JUDGE_BRIEF.md`). |
 | `multicooker lint <task>` | Check `brief.yaml` ↔ `JUDGE_BRIEF.md` consistency (rubric dimension coverage). |
-| `multicooker report <task>` | Roll-up into `leaderboard.md` + `summary.json`. |
+| `multicooker report <task>` | Roll-up into `leaderboard.md` + `summary.json` + `artifacts.json`. |
+| `multicooker artifacts <task> [--json]` | Build/show the visibility-tagged file manifest. |
+| `multicooker archive <task> [--include-operator] [--format tar]` | Copy only publishable artifacts into a shareable dir/tarball. |
 | `multicooker status <task> [--json]` | Current state from `status.json` (live; orchestrator-friendly). |
 | `multicooker cancel <task>` | Stop a running cook, mark it cancelled, keep partial outputs. |
 | `multicooker resume <task> [--force]` | Re-run only the retryable cells of the latest round. |
@@ -375,6 +377,12 @@ Every cook writes, alongside the human `leaderboard.md`:
   `cook.cancel_requested`/`cook.cancelled`, …).
 - `summary.json` — canonical final result after `report`: ranking, per-judge
   breakdown, run metrics for the latest round, excluded self-flavor pairs.
+- `artifacts.json` — a manifest of every cook file tagged with a visibility
+  class: `public` (leaderboard, summary, participant `out/`, judge reviews),
+  `operator` (logs, traces, results), `secret` (`.auth/`), `host_only`
+  (judge mappings, sealed inbox). Unknown files default to `operator`, never
+  `public`. `multicooker archive` uses these classes to emit a shareable copy
+  that never contains credentials or judge mappings.
 
 An external control plane should drive cooks off these files rather than
 parsing stdout or markdown.

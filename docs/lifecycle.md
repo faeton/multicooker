@@ -44,10 +44,14 @@ holds **only** each participant's `out/` plus a sanitized `meta.json`
 (`exit_class` + `round`) — never `PROMPT.txt`/`trace.json`/logs,
 which would name the flavor to the blind judges.
 
-`status.json`, `events.jsonl`, and (after `report`) `summary.json` are
-the machine-readable contract for an external control plane — see
-`docs/control-plane-readiness.md`. `cancel` adds a `.mc-cancel` marker;
-`resume` archives prior attempts under `attempts/round-<N>/<p>/`.
+`status.json`, `events.jsonl`, and (after `report`) `summary.json` +
+`artifacts.json` are the machine-readable contract for an external control
+plane — see `docs/control-plane-readiness.md`. `artifacts.json` tags every
+file `public`/`operator`/`secret`/`host_only`; `multicooker archive` copies
+only `public` (or `--include-operator`) into a shareable dir/tarball and
+never touches `.auth/` or `judging/_mapping.json`. `cancel` adds a
+`.mc-cancel` marker; `resume` archives prior attempts under
+`attempts/round-<N>/<p>/`.
 
 If `brief.yaml` declares `outputs.required`, each cell's `out/` is checked
 after a clean exit: a participant that exited `ok` but didn't write a
