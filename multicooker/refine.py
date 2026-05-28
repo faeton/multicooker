@@ -25,7 +25,12 @@ import yaml
 
 from . import base_images, compose_render, compose_runner, metrics, state
 from .cook import _seal_for_judging, _snapshot_creds_or_die, _write_trace
-from .runner_common import RunResult, classify_cell, copytree_clean
+from .runner_common import (
+    RunResult,
+    apply_required_outputs,
+    classify_cell,
+    copytree_clean,
+)
 
 
 REFINE_PROMPT_HEADER = """\
@@ -147,7 +152,8 @@ def _setup_worktree_refine(cook_dir: Path, participant: str,
 def _run_one(cook_dir: Path, project: str, participant: dict,
              prompt_text: str, timeout_s: int, results: dict,
              round_num: int,
-             lock: threading.Lock) -> None:
+             lock: threading.Lock,
+             required_outputs: list[dict] | None = None) -> None:
     name = participant["name"]
     flavor = participant.get("flavor", name)
     service = f"participant-{name}"
@@ -184,6 +190,8 @@ def _run_one(cook_dir: Path, project: str, participant: dict,
     status = classify_cell(res)
     if state.is_cancelled(cook_dir) and status != "ok":
         status = state.CELL_CANCELLED
+    status, missing_outputs = apply_required_outputs(
+        status, cook_dir / "work" / name / "out", required_outputs)
     usage = metrics.collect_usage(cook_dir, "participant", name, flavor)
     with lock:
         result = {
@@ -195,19 +203,27 @@ def _run_one(cook_dir: Path, project: str, participant: dict,
             "stdout": str(res.stdout_path),
             "stderr": str(res.stderr_path),
         }
+        if missing_outputs:
+            result["missing_outputs"] = missing_outputs
         if usage is not None:
             result["usage"] = usage
         results[name] = result
     _write_trace(cook_dir, participant, mode="refine", round_num=round_num,
-                 started_at=started_at, res=res, status=status, usage=usage)
+                 started_at=started_at, res=res, status=status, usage=usage,
+                 missing_outputs=missing_outputs)
     _seal_for_judging(cook_dir, name, exit_class=status, round_num=round_num)
+    cell_extra = {"missing": missing_outputs} if missing_outputs else {}
     state.set_cell(cook_dir, name, state=status, finished_at=state.now_iso(),
-                   exit_class=status, duration_s=round(res.duration_s, 1))
+                   exit_class=status, duration_s=round(res.duration_s, 1),
+                   **cell_extra)
     if res.rate_limited:
         state.append_event(cook_dir, "cell.rate_limited", phase="refine", actor=name,
                            payload={"retry_after_s": res.retry_after_s})
+    exited_payload = {"exit_class": status, "duration_s": round(res.duration_s, 1)}
+    if missing_outputs:
+        exited_payload["missing_outputs"] = missing_outputs
     state.append_event(cook_dir, "cell.exited", phase="refine", actor=name,
-                       payload={"exit_class": status, "duration_s": round(res.duration_s, 1)})
+                       payload=exited_payload)
     print(f"[refine] {name}: {status} (exit={res.exit_code}, {res.duration_s:.1f}s)",
           flush=True)
 
@@ -222,8 +238,12 @@ def refine(name: str, root: Path,
         return 2
     cfg = yaml.safe_load((cook_dir / "brief.yaml").read_text())
 
-    from . import brief_schema
+    from . import brief_schema, lint
     rc = brief_schema.validate_or_die(cfg, source=str(cook_dir / "brief.yaml"))
+    if rc is not None:
+        return rc
+    # Lint before any side effects (snapshot/render) so a failure is a clean no-op.
+    rc = lint.lint_or_die(cook_dir, cfg)
     if rc is not None:
         return rc
 
@@ -323,11 +343,13 @@ def refine(name: str, root: Path,
     # 5. Run participants in parallel.
     results: dict[str, dict] = {}
     lock = threading.Lock()
+    required_outputs = (cfg.get("outputs") or {}).get("required")
     threads: list[threading.Thread] = []
     for p in participants:
         t = threading.Thread(
             target=_run_one,
             args=(cook_dir, project, p, prompts[p["name"]], timeout_s, results, round_num, lock),
+            kwargs={"required_outputs": required_outputs},
             daemon=True,
         )
         t.start()

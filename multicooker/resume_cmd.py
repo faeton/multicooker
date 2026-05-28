@@ -98,9 +98,18 @@ def resume(name: str, root: Path, force: bool = False,
                    if n in pcfg
                    and e.get("status") in state.RETRYABLE_CELL_STATES]
     if not targets:
+        extra = ""
+        if not force:
+            skipped = sorted({e.get("status") for e in prior.values()
+                              if e.get("status") not in state.RETRYABLE_CELL_STATES
+                              and e.get("status") not in (None, "ok")})
+            if skipped:
+                extra = (f"; cells in state {skipped} are not auto-retryable — "
+                         f"use --force to rerun them (and any OK cells)")
+            else:
+                extra = "; use --force to rerun OK cells"
         print(f"[resume] nothing to resume (round {round_num}: no retryable "
-              f"cells{'' if force else '; use --force to rerun OK cells'})",
-              flush=True)
+              f"cells{extra})", flush=True)
         return 0
 
     # Reuse each cell's exact prompt from the last run (cook or refine).
@@ -155,12 +164,14 @@ def resume(name: str, root: Path, force: bool = False,
     state.update_status(cook_dir, state=state.COOKING)
     results: dict[str, dict] = {}
     lock = threading.Lock()
+    required_outputs = (cfg.get("outputs") or {}).get("required")
     threads: list[threading.Thread] = []
     for n in targets:
         t = threading.Thread(
             target=_run_participant,
             args=(cook_dir, project, pcfg[n], results, timeout_s, prompts[n], lock),
-            kwargs={"round_num": round_num, "phase": "resume", "mode": "resume"},
+            kwargs={"round_num": round_num, "phase": "resume", "mode": "resume",
+                    "required_outputs": required_outputs},
             daemon=True,
         )
         t.start()

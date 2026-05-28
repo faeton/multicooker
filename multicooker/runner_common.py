@@ -51,6 +51,43 @@ def classify_cell(res: "RunResult") -> str:
     return "non_zero_exit"
 
 
+def validate_outputs(out_dir: Path, required: list[dict] | None) -> list[str]:
+    """Return the declared required output paths absent from out_dir.
+
+    A required path is satisfied only by a real (non-symlink) regular file with
+    nonzero size — an empty RESULT.md or a symlink isn't a deliverable. `kind`
+    is not enforced here; presence is the contract (see docs item 12).
+    """
+    missing: list[str] = []
+    for spec in required or []:
+        rel = (spec or {}).get("path") if isinstance(spec, dict) else None
+        if not rel:
+            continue
+        p = out_dir / rel
+        ok = p.is_file() and not p.is_symlink() and p.stat().st_size > 0
+        if not ok:
+            missing.append(rel)
+    return missing
+
+
+def apply_required_outputs(status: str, out_dir: Path,
+                           required: list[dict] | None) -> tuple[str, list[str]]:
+    """Downgrade an otherwise-ok cell to artifact_missing if declared outputs
+    are absent. Returns (status, missing_paths).
+
+    Only fires when the process actually exited cleanly (status == "ok"): a
+    rate-limit/timeout/non-zero/oom/start_failed is a more specific truth and
+    must not be masked by artifact validation. Shared by cook and refine so
+    they classify identically.
+    """
+    if status != "ok" or not required:
+        return status, []
+    missing = validate_outputs(out_dir, required)
+    if missing:
+        return "artifact_missing", missing
+    return status, []
+
+
 _RL_PATTERNS = {
     "claude": [
         re.compile(r"5[- ]hour limit reached", re.I),

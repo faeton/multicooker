@@ -354,6 +354,7 @@ The long version: [`HOWTO.md`](HOWTO.md). Internals:
 | `multicooker refine <task>` | Round N+1 with feedback on top of previous out. |
 | `multicooker judge <task>` | Anonymized scoring by all judges. |
 | `multicooker rejudge <task>` | Re-run judging (e.g. after editing `JUDGE_BRIEF.md`). |
+| `multicooker lint <task>` | Check `brief.yaml` ↔ `JUDGE_BRIEF.md` consistency (rubric dimension coverage). |
 | `multicooker report <task>` | Roll-up into `leaderboard.md` + `summary.json`. |
 | `multicooker status <task> [--json]` | Current state from `status.json` (live; orchestrator-friendly). |
 | `multicooker cancel <task>` | Stop a running cook, mark it cancelled, keep partial outputs. |
@@ -377,6 +378,22 @@ Every cook writes, alongside the human `leaderboard.md`:
 
 An external control plane should drive cooks off these files rather than
 parsing stdout or markdown.
+
+### Required outputs (optional)
+
+Declare the deliverables a participant must produce, and a clean run that
+doesn't write them is recorded as `artifact_missing` (not `ok`) — honest
+status without aborting judging:
+
+```yaml
+outputs:
+  required:
+    - { path: RESULT.md, kind: markdown }   # path is relative to out/
+```
+
+A required path is satisfied only by a real, non-empty file. `multicooker lint`
+(and `doctor`) check that every rubric dimension id in `brief.yaml` is mirrored
+in `JUDGE_BRIEF.md`; `cook`/`refine` refuse to run if it isn't.
 
 ## Status
 

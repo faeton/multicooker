@@ -117,7 +117,13 @@ Append hard rules to `Dockerfile.cmd` or to the wrapper, not to
 The most common "scores are random" — the rubric in
 `JUDGE_BRIEF.md` is out of sync with what's promised in
 `BRIEF.md`. Check: after editing one, open the other and make
-sure the dimensions match by id, weight, and scale.
+sure the dimensions match by id, weight, and scale. `multicooker lint`
+now catches the id-coverage half of this (and `cook`/`refine` refuse to
+run when a rubric dimension id is missing from `JUDGE_BRIEF.md`), but
+weight/scale wording still needs a human eye. **Upgrade note:** because
+this gate is new, an older cook whose `JUDGE_BRIEF.md` already drifted
+will start failing on the next `cook`/`refine` — run `multicooker lint
+<task>` to see exactly which dimension ids to add.
 
 ## #11. Participant's stderr contains its flavor's fingerprints
 
@@ -128,3 +134,14 @@ logs reach the judge — anonymization is blown. **Rule:** into
 do **not** copy `logs/`, `PROMPT.txt`, `trace.json`, or `usage/` —
 those name the flavor and the judge tree is built straight from
 `_inbox/<p>/`.
+
+## #12. `outputs.required` paths must survive the seal
+
+Required-output validation runs against `work/<p>/out/`, but judges only
+ever see the *sealed* copy, and `copytree_clean` strips `.gitignore`
+basenames and build-dir names (`node_modules`, `dist`, `build`, `target`,
+…) on the way into `judging/_inbox/<p>/out/`. So a required path whose
+basename collides with that ignore list (e.g. `required: build/index.html`)
+can pass validation yet vanish from the submission the judge scores.
+**Rule:** keep required outputs plain top-level files like `RESULT.md` /
+`PROPOSAL.md`; don't point them at build-artifact directories.

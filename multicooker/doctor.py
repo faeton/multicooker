@@ -24,7 +24,7 @@ from pathlib import Path
 
 import yaml
 
-from . import base_images, brief_schema, compose_render, creds, host_profile
+from . import base_images, brief_schema, compose_render, creds, host_profile, lint
 
 
 TEMPLATES_PARTICIPANTS = (
@@ -231,6 +231,13 @@ def doctor(name: str | None, root: Path,
     if strict:
         print("(--strict: warnings count as failures)")
     print()
+
+    # Rubric lint (cross-file): only when a cook is given. Cheap, runs before
+    # any docker/image work — the plan wants lint to gate expensive operations.
+    if cook_dir is not None and cfg is not None:
+        for e in lint.lint_consistency(cook_dir, cfg):
+            print(f"  [FAIL] rubric lint: {e}")
+            failed += 1
 
     for label, fn in [("docker", _check_docker), ("docker compose", _check_compose)]:
         ok, msg = fn()

@@ -30,7 +30,7 @@ from pathlib import Path
 import yaml
 
 from . import base_images, compose_render, compose_runner, creds, metrics, state
-from .runner_common import RunResult, classify_cell
+from .runner_common import RunResult, apply_required_outputs, classify_cell
 
 
 PROMPT_TEMPLATE = """\
@@ -138,7 +138,8 @@ def _write_trace(cook_dir: Path, participant: dict, mode: str,
                  round_num: int | None, started_at: str,
                  res: RunResult | None, status: str,
                  error: str | None = None,
-                 usage: dict | None = None) -> None:
+                 usage: dict | None = None,
+                 missing_outputs: list[str] | None = None) -> None:
     """Per-cell trace.json next to work/<p>/. Cheap structured artifact for
     rejudge / debugging without re-running the LLM. Overwrites previous
     round's trace — round-N traces also live in rounds/<N>/<p>/trace.json
@@ -159,6 +160,8 @@ def _write_trace(cook_dir: Path, participant: dict, mode: str,
     }
     if error is not None:
         trace["error"] = error
+    if missing_outputs:
+        trace["missing_outputs"] = missing_outputs
     if res is not None:
         trace.update({
             "exit_code": res.exit_code,
@@ -178,7 +181,8 @@ def _write_trace(cook_dir: Path, participant: dict, mode: str,
 def _run_participant(cook_dir: Path, project: str, participant: dict,
                      results: dict, timeout_s: int, prompt_text: str,
                      lock: threading.Lock, *, round_num: int = 1,
-                     phase: str = "cook", mode: str = "cook") -> None:
+                     phase: str = "cook", mode: str = "cook",
+                     required_outputs: list[dict] | None = None) -> None:
     name = participant["name"]
     flavor = participant.get("flavor", name)
     service = f"participant-{name}"
@@ -218,6 +222,10 @@ def _run_participant(cook_dir: Path, project: str, participant: dict,
     # don't mislabel that 137/125 exit as a genuine non_zero_exit.
     if state.is_cancelled(cook_dir) and status != "ok":
         status = state.CELL_CANCELLED
+    # A clean exit that didn't produce the declared deliverables is honest-ly
+    # artifact_missing, not ok (see docs item 12).
+    status, missing_outputs = apply_required_outputs(
+        status, cook_dir / "work" / name / "out", required_outputs)
     usage = metrics.collect_usage(cook_dir, "participant", name, flavor)
     with lock:
         result = {
@@ -229,19 +237,27 @@ def _run_participant(cook_dir: Path, project: str, participant: dict,
             "stdout": str(res.stdout_path),
             "stderr": str(res.stderr_path),
         }
+        if missing_outputs:
+            result["missing_outputs"] = missing_outputs
         if usage is not None:
             result["usage"] = usage
         results[name] = result
     _write_trace(cook_dir, participant, mode=mode, round_num=round_num,
-                 started_at=started_at, res=res, status=status, usage=usage)
+                 started_at=started_at, res=res, status=status, usage=usage,
+                 missing_outputs=missing_outputs)
     _seal_for_judging(cook_dir, name, exit_class=status, round_num=round_num)
+    cell_extra = {"missing": missing_outputs} if missing_outputs else {}
     state.set_cell(cook_dir, name, state=status, finished_at=state.now_iso(),
-                   exit_class=status, duration_s=round(res.duration_s, 1))
+                   exit_class=status, duration_s=round(res.duration_s, 1),
+                   **cell_extra)
     if res.rate_limited:
         state.append_event(cook_dir, "cell.rate_limited", phase=phase, actor=name,
                            payload={"retry_after_s": res.retry_after_s})
+    exited_payload = {"exit_class": status, "duration_s": round(res.duration_s, 1)}
+    if missing_outputs:
+        exited_payload["missing_outputs"] = missing_outputs
     state.append_event(cook_dir, "cell.exited", phase=phase, actor=name,
-                       payload={"exit_class": status, "duration_s": round(res.duration_s, 1)})
+                       payload=exited_payload)
     print(f"[{phase}] {name}: {status} (exit={res.exit_code}, {res.duration_s:.1f}s)", flush=True)
 
 
@@ -275,8 +291,11 @@ def cook(name: str, root: Path,
         return 2
     cfg = yaml.safe_load(brief_yaml.read_text())
 
-    from . import brief_schema
+    from . import brief_schema, lint
     rc = brief_schema.validate_or_die(cfg, source=str(brief_yaml))
+    if rc is not None:
+        return rc
+    rc = lint.lint_or_die(cook_dir, cfg)
     if rc is not None:
         return rc
 
@@ -360,12 +379,14 @@ def cook(name: str, root: Path,
 
     results: dict[str, dict] = {}
     lock = threading.Lock()
+    required_outputs = (cfg.get("outputs") or {}).get("required")
 
     threads: list[threading.Thread] = []
     for p in participants:
         t = threading.Thread(
             target=_run_participant,
             args=(cook_dir, project, p, results, timeout_s, prompt_text, lock),
+            kwargs={"required_outputs": required_outputs},
             daemon=True,
         )
         t.start()

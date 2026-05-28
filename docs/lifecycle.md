@@ -49,6 +49,15 @@ the machine-readable contract for an external control plane — see
 `docs/control-plane-readiness.md`. `cancel` adds a `.mc-cancel` marker;
 `resume` archives prior attempts under `attempts/round-<N>/<p>/`.
 
+If `brief.yaml` declares `outputs.required`, each cell's `out/` is checked
+after a clean exit: a participant that exited `ok` but didn't write a
+declared deliverable (or wrote an empty/symlinked one) is recorded as
+`artifact_missing` rather than `ok`. The check runs against the
+participant's `work/<p>/out/` — keep required paths plain files
+(`RESULT.md`), not basenames that `copytree_clean` strips on seal
+(`node_modules`, `dist`, …). `artifact_missing` is **not** a retryable
+state, so `resume` skips it unless `--force`.
+
 ## Created by `multicooker refine <task>`
 
 ```

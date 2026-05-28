@@ -22,6 +22,7 @@ means valid. Caller decides what to do (print + exit, raise, etc).
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 
@@ -174,6 +175,48 @@ def _validate_rubric(rubric: Any, errors: list[str]) -> None:
         )
 
 
+def _validate_outputs(outputs: Any, errors: list[str]) -> None:
+    """Validate an optional `outputs:` block declaring required deliverables.
+
+    Shape:
+        outputs:
+          required:
+            - { path: RESULT.md, kind: markdown }   # kind optional
+
+    `path` is relative to the participant's out/. We reject absolute paths and
+    `..` traversal so validate_outputs(out_dir, ...) only ever looks inside the
+    submission tree. `kind` is recorded but not deeply enforced (presence is the
+    contract; see runner_common.validate_outputs).
+    """
+    if outputs is None:
+        return
+    if not isinstance(outputs, dict):
+        errors.append(f"outputs: must be a mapping (got {type(outputs).__name__})")
+        return
+    required = outputs.get("required")
+    if required is None:
+        return
+    if not isinstance(required, list):
+        errors.append("outputs.required: must be a list")
+        return
+    for i, spec in enumerate(required):
+        where = f"outputs.required[{i}]"
+        if not isinstance(spec, dict):
+            errors.append(f"{where}: must be a mapping (got {type(spec).__name__})")
+            continue
+        path = spec.get("path")
+        if not isinstance(path, str) or not path:
+            errors.append(f"{where}.path: required non-empty string")
+        elif path.startswith("/") or ".." in Path(path).parts:
+            errors.append(
+                f"{where}.path='{path}': must be a relative path inside out/ "
+                f"(no leading '/' or '..')"
+            )
+        if "kind" in spec and not isinstance(spec["kind"], str):
+            errors.append(f"{where}.kind: must be a string if set "
+                          f"(got {type(spec['kind']).__name__})")
+
+
 def _validate_judging(judging: Any, errors: list[str]) -> None:
     if judging is None:
         return
@@ -228,6 +271,7 @@ def validate(cfg: Any) -> list[str]:
 
     _validate_rubric(cfg.get("rubric"), errors)
     _validate_judging(cfg.get("judging"), errors)
+    _validate_outputs(cfg.get("outputs"), errors)
 
     if "resources" in cfg:
         _validate_resources(cfg["resources"], "resources", errors)

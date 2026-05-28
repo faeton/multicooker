@@ -172,3 +172,48 @@ def test_judging_must_be_mapping() -> None:
     cfg["judging"] = ["nope"]
     errs = validate(cfg)
     assert any("judging" in e for e in errs)
+
+
+def test_outputs_required_valid() -> None:
+    cfg = _good()
+    cfg["outputs"] = {"required": [
+        {"path": "RESULT.md", "kind": "markdown"},
+        {"path": "docs/PROPOSAL.md"},
+    ]}
+    assert validate(cfg) == []
+
+
+def test_outputs_required_must_be_list() -> None:
+    cfg = _good()
+    cfg["outputs"] = {"required": {"path": "RESULT.md"}}
+    errs = validate(cfg)
+    assert any("outputs.required" in e for e in errs)
+
+
+def test_outputs_path_required() -> None:
+    cfg = _good()
+    cfg["outputs"] = {"required": [{"kind": "markdown"}]}
+    errs = validate(cfg)
+    assert any("path" in e for e in errs)
+
+
+def test_outputs_rejects_absolute_and_traversal() -> None:
+    for bad in ("/etc/passwd", "../escape.md", "a/../../b.md"):
+        cfg = _good()
+        cfg["outputs"] = {"required": [{"path": bad}]}
+        errs = validate(cfg)
+        assert any("relative path" in e for e in errs), bad
+
+
+def test_outputs_kind_must_be_string() -> None:
+    cfg = _good()
+    cfg["outputs"] = {"required": [{"path": "RESULT.md", "kind": 5}]}
+    errs = validate(cfg)
+    assert any("kind" in e for e in errs)
+
+
+def test_outputs_must_be_mapping() -> None:
+    cfg = _good()
+    cfg["outputs"] = ["nope"]
+    errs = validate(cfg)
+    assert any("outputs" in e for e in errs)

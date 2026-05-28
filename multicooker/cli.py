@@ -21,6 +21,7 @@ from .status_cmd import status_cmd
 from .cancel_cmd import cancel_cmd
 from .resume_cmd import resume
 from .tail_cmd import tail_cmd
+from .lint import lint as lint_cook
 from . import base_images
 
 
@@ -178,6 +179,13 @@ def main(argv: list[str] | None = None) -> int:
     pr.add_argument("name")
     pr.add_argument("--root", default="cooks")
 
+    # lint
+    pli = sub.add_parser("lint",
+                         help="Check brief.yaml + JUDGE_BRIEF.md consistency "
+                              "(rubric dimension coverage, schema)")
+    pli.add_argument("name", help="Cook folder name")
+    pli.add_argument("--root", default="cooks")
+
     # status
     pst = sub.add_parser("status",
                          help="Show a cook's current state (reads status.json)")
@@ -295,6 +303,8 @@ def main(argv: list[str] | None = None) -> int:
         )
     if args.cmd == "report":
         return report(name=args.name, root=Path(args.root))
+    if args.cmd == "lint":
+        return lint_cook(name=args.name, root=Path(args.root))
     if args.cmd == "status":
         return status_cmd(name=args.name, root=Path(args.root), as_json=args.as_json)
     if args.cmd == "cancel":

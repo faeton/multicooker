@@ -31,6 +31,19 @@ Notable changes to multicooker. Newest first.
 - **`multicooker tail <task> [actor]`.** Streams cell logs prefixed by
   actor, without the caller needing to know flavor-specific log
   filenames.
+- **Required output validation.** Optional `outputs.required` in
+  `brief.yaml` (`[{path, kind}]`, path relative to `out/`). A cell that
+  exits cleanly but doesn't write a declared deliverable (or writes an
+  empty/symlinked one) is recorded as `artifact_missing` instead of
+  `ok`, in `status.json`, `trace.json`, the result file, and the
+  `cell.exited` event — judging still proceeds, but the status is
+  honest. More specific failures (`timed_out`, `rate_limited`, …) are
+  never masked by this check.
+- **`multicooker lint <task>` + rubric gating.** Cross-file check that
+  every rubric dimension id in `brief.yaml` appears in `JUDGE_BRIEF.md`
+  (and that `JUDGE_BRIEF.md` exists when a rubric + judges are defined).
+  `doctor` runs it; `cook` and `refine` refuse to start if it fails, so
+  a drifted rubric is caught before any container work.
 - **Anti-self-judge policy.** `judging.policy` in `brief.yaml`
   (`require_distinct_flavor` | `warn` | `allow_self`, default `warn`).
   Under `require_distinct_flavor`, `report` drops same-flavor
