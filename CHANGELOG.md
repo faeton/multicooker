@@ -44,6 +44,14 @@ Notable changes to multicooker. Newest first.
   (and that `JUDGE_BRIEF.md` exists when a rubric + judges are defined).
   `doctor` runs it; `cook` and `refine` refuse to start if it fails, so
   a drifted rubric is caught before any container work.
+- **Public Python API.** `multicooker.api` (re-exported from the package
+  root): `CookRequest`, `CookStatus`, `CookResult`, and
+  `run_cook`/`run_judge`/`run_report`/`run_resume`/`cancel` plus
+  read-only `get_status`/`get_result`/`get_artifacts`. Each `run_*`
+  launches the CLI as a SUBPROCESS (no shared threads/locks with the
+  caller) and reads the result back from the on-disk contract files — a
+  convenience for embedding callers like a Zuzoo worker. The CLI +
+  file contract remain the primary surface.
 - **Compose/image namespaces.** `--namespace <ns>` (or
   `MULTICOOKER_NAMESPACE`) on `cook`/`judge`/`refine`/`resume` makes the
   compose project `mc-<ns>-<cook>` so two orchestrators can run

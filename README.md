@@ -388,6 +388,26 @@ Every cook writes, alongside the human `leaderboard.md`:
 An external control plane should drive cooks off these files rather than
 parsing stdout or markdown.
 
+### Python API
+
+For embedding callers (e.g. a worker process), `multicooker.api` wraps the CLI:
+
+```python
+from multicooker import CookRequest, run_cook, run_judge, run_report, get_status
+
+req = CookRequest(name="260527-example", root="/abs/path/cooks", namespace="zuzoo")
+status = run_cook(req)      # runs `cook` in a subprocess, returns CookStatus
+status = run_judge(req)
+result = run_report(req)    # returns CookResult parsed from summary.json
+print(result.ranking)
+# poll a running cook from elsewhere without launching anything:
+live = get_status("260527-example", "/abs/path/cooks")
+```
+
+Each `run_*` launches the CLI as a subprocess (no shared threads/locks with the
+caller) and reads the result from the on-disk contract files. Prefer an absolute
+`root`.
+
 ### Namespaces (multi-orchestrator)
 
 Pass `--namespace <ns>` (or set `MULTICOOKER_NAMESPACE`) on `cook`/`judge`/
