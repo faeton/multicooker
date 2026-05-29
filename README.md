@@ -341,7 +341,8 @@ different models.
 The long version: [`HOWTO.md`](HOWTO.md). Internals:
 [`docs/orchestration.md`](docs/orchestration.md),
 [`docs/auth.md`](docs/auth.md),
-[`docs/lifecycle.md`](docs/lifecycle.md).
+[`docs/lifecycle.md`](docs/lifecycle.md). Driving multicooker from an external
+control plane: [`docs/control-plane-integration.md`](docs/control-plane-integration.md).
 
 ## Commands
 
@@ -386,7 +387,8 @@ Every cook writes, alongside the human `leaderboard.md`:
   that never contains credentials or judge mappings.
 
 An external control plane should drive cooks off these files rather than
-parsing stdout or markdown.
+parsing stdout or markdown. Full schemas, states, and the worker pattern:
+[`docs/control-plane-integration.md`](docs/control-plane-integration.md).
 
 ### Python API
 

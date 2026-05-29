@@ -44,6 +44,11 @@ Notable changes to multicooker. Newest first.
   (and that `JUDGE_BRIEF.md` exists when a rubric + judges are defined).
   `doctor` runs it; `cook` and `refine` refuse to start if it fails, so
   a drifted rubric is caught before any container work.
+- **Control-plane integration guide.** `docs/control-plane-integration.md`
+  documents the full contract for an external orchestrator (Zuzoo): the
+  `status.json`/`events.jsonl`/`summary.json`/`artifacts.json` schemas,
+  cook/cell states (terminal + retryable), the command flow, visibility
+  classes + safe publishing, namespaces, retention, and the Python API.
 - **Public Python API.** `multicooker.api` (re-exported from the package
   root): `CookRequest`, `CookStatus`, `CookResult`, and
   `run_cook`/`run_judge`/`run_report`/`run_resume`/`cancel` plus
