@@ -123,7 +123,13 @@ def _setup_judge_workdir(cook_dir: Path, judge_name: str,
     if raw_src.exists():
         shutil.copytree(raw_src, work / "raw")
     shutil.copytree(judge_in / "submissions", work / "submissions")
-    (work / "outbox").mkdir()
+    outbox = work / "outbox"
+    outbox.mkdir()
+    # The judge container (pinned uid 1000) writes scores.json + review.md here
+    # via the :rw bind-mount. Grant that uid via an owner-set ACL (no world
+    # exposure, no root); see cook._grant_container_write.
+    from .cook import _grant_container_write
+    _grant_container_write(outbox)
     return work
 
 

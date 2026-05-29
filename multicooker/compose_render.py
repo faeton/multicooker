@@ -18,6 +18,7 @@ Image naming: `mc-<task>-<flavor>` to keep cooks isolated from each other.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -169,6 +170,12 @@ def _resolve_limits(actor: dict, top_resources: dict,
 #   - user 1000:1000: every flavor image already runs non-root as uid 1000
 #     (node, and dummy's `mv`); pinning it at the compose layer keeps that
 #     true even if an image is swapped or a Dockerfile drops its `USER`.
+#     Overridable via MULTICOOKER_HARDENING_USER for hosts that build flavor
+#     images with a different uid (e.g. to match a dedicated service account so
+#     bind-mounted outputs land host-owned). NOTE: the stock flavor images bake
+#     creds under /home/node (uid 1000), so changing this only works end-to-end
+#     if the images are rebuilt with a matching uid/home; otherwise keep 1000
+#     and rely on the output-dir ACL (see cook._grant_container_write).
 #
 # Not enabled by default: a read-only rootfs. Participants legitimately run
 # arbitrary build tooling (npm/pip install, compilers) while solving a task,
@@ -176,7 +183,7 @@ def _resolve_limits(actor: dict, top_resources: dict,
 # `read_only: true` + tmpfs mounts to its own service.
 HARDENING_CAP_DROP = ["ALL"]
 HARDENING_SECURITY_OPT = ["no-new-privileges:true"]
-HARDENING_USER = "1000:1000"
+HARDENING_USER = os.environ.get("MULTICOOKER_HARDENING_USER", "1000:1000")
 
 
 def _apply_hardening(service: dict) -> None:

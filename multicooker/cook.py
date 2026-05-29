@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -28,6 +29,37 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
+
+# Container uid the flavor images run as. Mirrors compose_render.HARDENING_USER
+# (overridable via MULTICOOKER_HARDENING_USER) so the output-dir ACL grants
+# whatever uid the cook containers actually run as.
+_CONTAINER_UID = os.environ.get("MULTICOOKER_HARDENING_USER", "1000:1000").split(":")[0]
+
+
+def _grant_container_write(path: Path) -> None:
+    """Allow the pinned container uid to write into a host-created bind-mount dir.
+
+    The flavor containers run as uid 1000; on native Linux docker the host user
+    running multicooker is usually a different uid, so a freshly-created dir
+    isn't writable by the container. Grant exactly that uid via an owner-set
+    POSIX ACL — no root needed and, crucially, no world-write exposure.
+
+    We set both an access ACL (the container uid + this host uid get rwx on the
+    dir) and a *default* ACL (so files/dirs the container creates inside inherit
+    access for the host uid too) — otherwise a container-written file with a
+    restrictive mode like 0600 could be unreadable by the host during the later
+    seal/copy/archive/prune steps. Falls back to a 0777 chmod only where ACLs
+    are unavailable (e.g. macOS dev hosts, where Docker Desktop maps uids and the
+    mode is moot anyway).
+    """
+    if shutil.which("setfacl"):
+        host = str(os.getuid())
+        spec = (f"u:{_CONTAINER_UID}:rwx,u:{host}:rwx,"
+                f"d:u:{_CONTAINER_UID}:rwx,d:u:{host}:rwx")
+        r = subprocess.run(["setfacl", "-m", spec, str(path)], capture_output=True)
+        if r.returncode == 0:
+            return
+    path.chmod(0o777)
 
 from . import base_images, compose_render, compose_runner, creds, metrics, state
 from .runner_common import RunResult, apply_required_outputs, classify_cell
@@ -117,7 +149,14 @@ def _setup_worktree(cook_dir: Path, participant: str, prompt_text: str) -> Path:
     """Prepare cook_dir/work/<p>/out/ and PROMPT.txt; bind-mounts handle the rest."""
     wt = cook_dir / "work" / participant
     wt.mkdir(parents=True, exist_ok=True)
-    (wt / "out").mkdir(exist_ok=True)
+    out = wt / "out"
+    out.mkdir(exist_ok=True)
+    # The participant container runs as the pinned image user (uid 1000; see
+    # compose_render.HARDENING_USER) and writes deliverables here via the :rw
+    # bind-mount. On native Linux docker the host dir owner can differ from uid
+    # 1000, so grant that uid write access — via an owner-set ACL (no world
+    # exposure, no root needed); sealing later runs on the host.
+    _grant_container_write(out)
     # Write PROMPT.txt + fsync so the file is durably on disk before compose
     # bind-mounts it. On native Linux docker, mounting a single file that
     # isn't visible to the daemon yet can silently materialize as an empty
