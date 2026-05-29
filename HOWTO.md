@@ -396,6 +396,30 @@ participant). The full artifact lifecycle is in
 After refine, the same judging step is expected:
 `multicooker judge <task>` → `multicooker report <task>`.
 
+### `multicooker chef <task>`
+
+Chef mode is for the "one best synthesis" pass after a normal cook has
+already produced and judged several divergent outputs. It copies sealed
+submissions from `judging/_inbox/` into
+`chef/<chef>/input/submissions/`, mounts that directory read-only only
+for the chef container as `/work/chef-input`, runs one chef participant,
+then seals that chef output like any other participant:
+
+```bash
+multicooker chef 260509-my-task \
+  --chef chef=codex \
+  --base codex \
+  --donors claude,gemini,grok
+
+multicooker rejudge 260509-my-task
+multicooker report 260509-my-task
+```
+
+By default, `chef` registers the chef participant in `brief.yaml`, so
+`rejudge` and `report` can compare it against the original field. Use
+`--no-register` only when you want an isolated synthesis artifact that
+will not appear on the leaderboard.
+
 ### `multicooker rejudge <task>`
 
 A separate command: re-judge **the same** snapshot without a

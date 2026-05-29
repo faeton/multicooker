@@ -69,6 +69,7 @@ def render_compose(cook_dir: Path, cfg: dict,
             project=project,
             network=net,
             model=p.get("model"),
+            chef_input=p.get("_chef_input"),
             limits=_resolve_limits(
                 actor=p, top_resources=top_resources, profile=profile,
             ),
@@ -226,6 +227,7 @@ def _usage_volumes(flavor: str, cook_dir: Path, cell_kind: str, name: str) -> li
 def _participant_service(cook_dir: Path, participant_name: str,
                          flavor: str, project: str, network: str,
                          model: str | None = None,
+                         chef_input: str | None = None,
                          limits: dict | None = None) -> dict:
     cd = cook_dir.resolve()
     image = f"{project}-{flavor}"
@@ -235,6 +237,16 @@ def _participant_service(cook_dir: Path, participant_name: str,
     }
     if model:
         env["MULTICOOKER_MODEL"] = model
+    volumes = [
+        f"{cd}/BRIEF.md:/work/BRIEF.md:ro",
+        f"{cd}/raw:/work/raw:ro",
+        f"{cd}/work/{participant_name}/PROMPT.txt:/work/PROMPT.txt:ro",
+        f"{cd}/work/{participant_name}/out:/work/out:rw",
+        *_auth_volumes(flavor, cook_dir),
+        *_usage_volumes(flavor, cook_dir, "participant", participant_name),
+    ]
+    if chef_input:
+        volumes.append(f"{Path(chef_input).resolve()}:/work/chef-input:ro")
     service = {
         "image": image,
         "build": {
@@ -245,14 +257,7 @@ def _participant_service(cook_dir: Path, participant_name: str,
         "working_dir": "/work",
         "environment": env,
         "networks": [network],
-        "volumes": [
-            f"{cd}/BRIEF.md:/work/BRIEF.md:ro",
-            f"{cd}/raw:/work/raw:ro",
-            f"{cd}/work/{participant_name}/PROMPT.txt:/work/PROMPT.txt:ro",
-            f"{cd}/work/{participant_name}/out:/work/out:rw",
-            *_auth_volumes(flavor, cook_dir),
-            *_usage_volumes(flavor, cook_dir, "participant", participant_name),
-        ],
+        "volumes": volumes,
         # `up` will run the entrypoint baked into the image.
         # Don't restart on failure — we want a definitive exit.
         "restart": "no",

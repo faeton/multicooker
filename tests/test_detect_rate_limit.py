@@ -73,11 +73,71 @@ def test_codex_too_many_requests():
     assert rl is True
 
 
+def test_codex_rate_limit_exceeded_error_code():
+    text = "error: rate_limit_exceeded"
+    rl, _, ev = detect_rate_limit("codex", text)
+    assert rl is True
+    assert "rate_limit_exceeded" in ev
+
+
+def test_codex_rate_limit_reached_message():
+    text = "Rate limit reached for this model."
+    rl, _, ev = detect_rate_limit("codex", text)
+    assert rl is True
+    assert "Rate limit reached" in ev
+
+
+@pytest.mark.parametrize("flavor", ["codex", "gemini", "grok"])
+def test_no_false_positive_on_proposal_text(flavor):
+    text = (
+        '+  "state": "orange",\n'
+        '+  "confidence": "observed_cli_error",\n'
+        '+  "reason": "rate limit; retry suggested later",\n'
+        '+  "cooldown_until": "2026-05-27T18:00:00Z",\n'
+    )
+    rl, retry, ev = detect_rate_limit(flavor, text)
+    assert rl is False
+    assert retry == 0
+    assert ev == ""
+
+
+@pytest.mark.parametrize("flavor", ["codex", "gemini", "grok"])
+def test_no_false_positive_on_rate_limit_design_prose(flavor):
+    text = (
+        "Identified strengths in Docker-based isolation and blind judging, "
+        "and weaknesses in rubric synchronization, rate-limit detection, "
+        "and artifact lifecycle management."
+    )
+    rl, retry, ev = detect_rate_limit(flavor, text)
+    assert rl is False
+    assert retry == 0
+    assert ev == ""
+
+
+@pytest.mark.parametrize("flavor", ["codex", "gemini", "grok"])
+def test_no_false_positive_on_patch_payload_quota_examples(flavor):
+    text = (
+        "+- Adapter exit codes and stderr patterns: rate limit, "
+        "quota exceeded, try again in.\n"
+        "+- Successful short probes move from unknown to green.\n"
+    )
+    rl, retry, ev = detect_rate_limit(flavor, text)
+    assert rl is False
+    assert retry == 0
+    assert ev == ""
+
+
 # ---- gemini ---------------------------------------------------------------
 
 def test_gemini_quota_exceeded():
     text = "Resource quota exceeded for project xyz."
     rl, _, _ = detect_rate_limit("gemini", text)
+    assert rl is True
+
+
+def test_grok_quota_exhausted():
+    text = "error: quota exhausted"
+    rl, _, _ = detect_rate_limit("grok", text)
     assert rl is True
 
 

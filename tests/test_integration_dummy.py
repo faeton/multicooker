@@ -178,6 +178,79 @@ def test_refine_participants_subset(tmp_path: Path):
     _run(["clean", cook.name, "--root", str(root)], cwd=REPO_ROOT)
 
 
+def test_chef_track_on_dummy_outputs(tmp_path: Path):
+    """Chef mode should run one synthesis participant over sealed outputs."""
+    import uuid
+
+    root = tmp_path / "cooks"
+    res = _run(["new", f"chef-smoke-{uuid.uuid4().hex[:8]}", "--root", str(root),
+                "--participants", "a=dummy,b=dummy"], cwd=REPO_ROOT)
+    assert res.returncode == 0, _fail(res)
+    cook = next(root.iterdir())
+
+    import yaml
+    brief_yaml = cook / "brief.yaml"
+    cfg = yaml.safe_load(brief_yaml.read_text())
+    cfg["judges"] = [{"name": "dummy-judge", "flavor": "dummy"}]
+    brief_yaml.write_text(yaml.safe_dump(cfg, sort_keys=False))
+
+    res = _run(["cook", cook.name, "--root", str(root)], cwd=REPO_ROOT)
+    assert res.returncode == 0, _fail(res)
+    res = _run(["judge", cook.name, "--root", str(root)], cwd=REPO_ROOT)
+    assert res.returncode == 0, _fail(res)
+    res = _run(["report", cook.name, "--root", str(root)], cwd=REPO_ROOT)
+    assert res.returncode == 0, _fail(res)
+
+    res = _run([
+        "chef", cook.name,
+        "--root", str(root),
+        "--chef", "chef=dummy",
+        "--base", "a",
+        "--donors", "b",
+        "--timeout-s", "120",
+    ], cwd=REPO_ROOT)
+    assert res.returncode == 0, _fail(res)
+
+    chef_result = (cook / "work" / "chef" / "out" / "RESULT.md").read_text()
+    assert "You are the chef" in chef_result
+    assert "Base: `a`" in chef_result
+    assert "Donors: `b`" in chef_result
+    assert "./chef-input/" in chef_result
+
+    assert (cook / "chef" / "chef" / "input" / "submissions" /
+            "a" / "out" / "RESULT.md").exists()
+    assert (cook / "chef" / "chef" / "input" / "submissions" /
+            "b" / "out" / "RESULT.md").exists()
+    assert not (cook / "raw" / "chef-input").exists()
+    assert (cook / "judging" / "_inbox" / "chef" / "out" / "RESULT.md").exists()
+
+    cfg = yaml.safe_load(brief_yaml.read_text())
+    assert {"name": "chef", "flavor": "dummy"} in cfg["participants"]
+
+    import json as _json
+    trace = _json.loads((cook / "work" / "chef" / "trace.json").read_text())
+    assert trace["mode"] == "chef"
+    assert trace["status"] == "ok"
+
+    res = _run(["rejudge", cook.name, "--root", str(root)], cwd=REPO_ROOT)
+    assert res.returncode == 0, _fail(res)
+    res = _run(["report", cook.name, "--root", str(root)], cwd=REPO_ROOT)
+    assert res.returncode == 0, _fail(res)
+    leaderboard = (cook / "leaderboard.md").read_text()
+    assert "| chef |" in leaderboard
+
+    res = _run([
+        "chef", cook.name,
+        "--root", str(root),
+        "--chef", "a=dummy",
+        "--base", "b",
+    ], cwd=REPO_ROOT)
+    assert res.returncode == 2
+    assert "existing non-chef participant" in res.stdout
+
+    _run(["clean", cook.name, "--root", str(root)], cwd=REPO_ROOT)
+
+
 def test_refine_external_feedback_path(tmp_path: Path):
     """`refine --feedback <path>` reads from given file, not cooks/<task>/FEEDBACK.md."""
     root = tmp_path / "cooks"
