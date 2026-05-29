@@ -154,6 +154,27 @@ fix/`rejudge` from there.
 `round` reflects the latest round: after `refine`, the metrics come from
 `REFINE_<N>_RESULT.json`, not the stale round-1 `RUN_RESULT.json`.
 
+The `anti_self_judge_policy` field echoes the policy actually applied (see
+below), and `excluded_pairs` lists the (judge, participant) pairs dropped under
+the strict policy — empty under `warn`/`allow_self`.
+
+### Judging policy — blind judging is opt-in
+
+Whether a judge may score a submission of its **own flavor** is governed by
+`judging.policy` in `brief.yaml`, with three values:
+
+| policy | same-flavor scores | use for |
+|---|---|---|
+| `require_distinct_flavor` | dropped before aggregation, recorded in `excluded_pairs` | **unattended / control-plane runs** |
+| `warn` (**default**) | kept; an advisory is printed | interactive, when you accept the bias |
+| `allow_self` | kept silently | — |
+
+The default is `warn`, so **absent an explicit policy the blind-judging
+guarantee does not hold** — a same-flavor judge's scores still affect the
+ranking. A control plane that wants the guarantee must set `judging.policy: require_distinct_flavor` in each cook's
+`brief.yaml` before `cook`. (Sealing/anonymization — letters instead of flavor names — is
+always on; this policy is only about whether self-flavor *scores* are counted.)
+
 ### `artifacts.json` — visibility manifest
 
 Written by `report` (or on demand via `multicooker artifacts <name>`). Tags

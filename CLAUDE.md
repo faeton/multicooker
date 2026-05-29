@@ -106,12 +106,29 @@ Mirror the rubric: same dimension `id`s, same order, plus a short
 
 ### Anti-self-judge — choosing judges
 
-A judge never scores submissions from its **own flavor** (claude
-doesn't judge claude's output). So:
+Whether a judge scores submissions from its **own flavor** (claude
+judging claude's output) is a **policy**, not an automatic guarantee.
+Set it in `brief.yaml`:
+
+```yaml
+judging:
+  policy: require_distinct_flavor   # | warn | allow_self
+```
+
+- `require_distinct_flavor` — drops every same-flavor (judge,
+  submission) score before aggregation; this is the real blind-judge
+  guarantee. Use it for unattended / control-plane runs.
+- `warn` — **the default**: same-flavor scores are *kept*, only an
+  advisory is printed. So absent explicit policy, claude *can* score
+  claude.
+- `allow_self` — keep them, no warning.
+
+When designing judge lineups, still aim for cross-flavor coverage so
+strict mode doesn't leave a submission scored by no one:
 
 - For every participant flavor, at least **one judge of a
   different flavor** must exist, otherwise that submission is
-  scored by no one.
+  scored by no one (under `require_distinct_flavor`).
 - With one participant flavor, you cannot judge it with that
   flavor's judge — pick a different judge flavor.
 - With several participant flavors (e.g. claude/codex/gemini/grok),
