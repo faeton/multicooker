@@ -22,9 +22,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-
-def _project_name(task_name: str) -> str:
-    return f"mc-{task_name}".lower().replace("_", "-")
+from .project import project_from_compose
 
 
 def _compose_down(cook_dir: Path, project: str, dry_run: bool) -> None:
@@ -59,14 +57,9 @@ def _clean_one(cook_dir: Path, dry_run: bool, keep_creds: bool) -> int:
         print(f"clean: {compose_yaml} not present (cook never ran in docker-mode); "
               f"only .auth/ will be removed if present", flush=True)
     else:
-        # Read project name from compose.yaml's `name:` field if present, otherwise
-        # derive from directory name.
-        try:
-            import yaml
-            cfg = yaml.safe_load(compose_yaml.read_text())
-            project = cfg.get("name") or _project_name(cook_dir.name)
-        except Exception:                                                   # noqa: BLE001
-            project = _project_name(cook_dir.name)
+        # Use the project name the cook actually ran under (compose.yaml `name:`),
+        # which already encodes any namespace; fall back to the bare name.
+        project = project_from_compose(cook_dir)
         print(f"[clean] {cook_dir.name} (project={project})")
         _compose_down(cook_dir, project, dry_run)
     if not keep_creds:

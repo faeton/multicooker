@@ -357,7 +357,8 @@ def _collect_scores(work: Path, judge_outbox: Path) -> bool:
 
 def judge(name: str, root: Path,
           judges_override: list[str] | None = None,
-          profile_override: str | None = None) -> int:
+          profile_override: str | None = None,
+          namespace: str | None = None) -> int:
     cook_dir = root / name if not Path(name).is_absolute() else Path(name)
     cfg = yaml.safe_load((cook_dir / "brief.yaml").read_text())
 
@@ -393,13 +394,15 @@ def judge(name: str, root: Path,
 
     timeout_s = int(cfg.get("judge_timeout_s", 15 * 60))
 
-    project = f"mc-{cfg['name']}".lower().replace("_", "-")
+    from .project import effective_project
+    project = effective_project(cook_dir, cfg["name"], namespace)
     flavors_needed = sorted({j.get("flavor", j["name"]) for j in judges_cfg})
     print("[judge] snapshotting creds...", flush=True)
     rc = _snapshot_creds_or_die(cook_dir, flavors_needed)
     if rc is not None:
         return rc
-    compose_render.render_compose(cook_dir, cfg, profile_override=profile_override)
+    compose_render.render_compose(cook_dir, cfg, profile_override=profile_override,
+                                  project=project)
 
     try:
         base_images.ensure_built(flavors_needed)

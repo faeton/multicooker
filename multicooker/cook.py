@@ -278,7 +278,8 @@ def _snapshot_creds_or_die(cook_dir: Path, flavors: list[str]) -> int | None:
 
 def cook(name: str, root: Path,
          participants_override: list[str] | None = None,
-         profile_override: str | None = None) -> int:
+         profile_override: str | None = None,
+         namespace: str | None = None) -> int:
     cook_dir = root / name if not Path(name).is_absolute() else Path(name)
     if not cook_dir.exists():
         print(f"error: cook folder {cook_dir} does not exist; "
@@ -307,8 +308,9 @@ def cook(name: str, root: Path,
         print("error: no participants selected", flush=True)
         return 2
 
+    from .project import effective_project
     timeout_s = int(cfg.get("timeout_s", 30 * 60))
-    project = f"mc-{cfg['name']}".lower().replace("_", "-")
+    project = effective_project(cook_dir, cfg["name"], namespace)
     flavors_needed = sorted({p.get("flavor", p["name"]) for p in participants})
 
     # Stamp run metadata.
@@ -348,7 +350,8 @@ def cook(name: str, root: Path,
                            payload={"reason": "creds snapshot failed"})
         return rc
 
-    compose_render.render_compose(cook_dir, cfg, profile_override=profile_override)
+    compose_render.render_compose(cook_dir, cfg, profile_override=profile_override,
+                                  project=project)
 
     # Worktrees BEFORE build — compose refuses to mount missing files.
     for p in participants:

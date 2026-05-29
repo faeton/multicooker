@@ -44,6 +44,18 @@ Notable changes to multicooker. Newest first.
   (and that `JUDGE_BRIEF.md` exists when a rubric + judges are defined).
   `doctor` runs it; `cook` and `refine` refuse to start if it fails, so
   a drifted rubric is caught before any container work.
+- **Compose/image namespaces.** `--namespace <ns>` (or
+  `MULTICOOKER_NAMESPACE`) on `cook`/`judge`/`refine`/`resume` makes the
+  compose project `mc-<ns>-<cook>` so two orchestrators can run
+  same-named cooks without colliding. Project-name derivation is now a
+  single `project.py` helper used everywhere; non-render commands
+  (`cancel`/`clean`) read the persisted name from `compose.yaml`.
+- **`multicooker prune --older-than DAYS`.** Server-style retention:
+  tears down each stale cook's docker project and removes the directory
+  (age from `status.json.updated_at`, falling back to result-file
+  mtime). `--keep-results` preserves `summary.json` + `leaderboard.md`,
+  `--dry-run` lists only, `--prune-images` reclaims dangling images +
+  build cache. `clean` remains non-destructive of results.
 - **`artifacts.json` manifest + `multicooker archive`.** `report` now
   writes `artifacts.json`, tagging every cook file with a visibility
   class — `public` (leaderboard, summary, participant `out/`, judge

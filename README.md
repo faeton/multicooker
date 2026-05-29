@@ -364,7 +364,8 @@ The long version: [`HOWTO.md`](HOWTO.md). Internals:
 | `multicooker tail <task> [actor]` | Stream cell logs, prefixed by actor. |
 | `multicooker diff <task>` | File-level diff between two refine rounds. |
 | `multicooker add-participant <task> NAME[=FLAVOR]` | Add another participant to an existing cook. |
-| `multicooker clean [<task>] [--all]` | `compose down -v --rmi local` + remove `.auth/`. |
+| `multicooker clean [<task>] [--all]` | `compose down -v --rmi local` + remove `.auth/` (keeps results). |
+| `multicooker prune --older-than DAYS [--keep-results]` | Delete cooks older than N days (docker teardown + remove dir). Destructive. |
 
 ### Machine-readable contract (for orchestrators)
 
@@ -386,6 +387,23 @@ Every cook writes, alongside the human `leaderboard.md`:
 
 An external control plane should drive cooks off these files rather than
 parsing stdout or markdown.
+
+### Namespaces (multi-orchestrator)
+
+Pass `--namespace <ns>` (or set `MULTICOOKER_NAMESPACE`) on `cook`/`judge`/
+`refine`/`resume` and the compose project becomes `mc-<ns>-<cook>`, so two
+orchestrators can run cooks with the same name without colliding on containers,
+images, or networks. The resolved name is persisted in `compose.yaml`, so
+`cancel` and `clean` find the right project without needing the flag again.
+
+### Retention
+
+`clean` only tears down docker artifacts and never deletes your results.
+`multicooker prune --older-than DAYS` is the destructive one: it tears down each
+stale cook's docker project and removes the directory (age from
+`status.json.updated_at`). `--keep-results` preserves `summary.json` +
+`leaderboard.md`; `--dry-run` lists without touching; `--prune-images` also
+reclaims dangling images + build cache.
 
 ### Required outputs (optional)
 

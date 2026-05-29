@@ -24,6 +24,7 @@ from .tail_cmd import tail_cmd
 from .lint import lint as lint_cook
 from .artifacts import artifacts_cmd
 from .archive_cmd import archive
+from .prune import prune
 from . import base_images
 
 
@@ -121,6 +122,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     profile_choices = ["auto", "large", "medium", "small"]
 
+    ns_help = ("Compose/image namespace; project becomes mc-<namespace>-<cook>. "
+               "Overrides MULTICOOKER_NAMESPACE env. Lets two orchestrators run "
+               "cooks with the same name without colliding.")
+
     # cook
     pc = sub.add_parser("cook", help="Launch all participants in parallel")
     pc.add_argument("name", help="Cook folder name (under cooks/ unless absolute)")
@@ -129,6 +134,7 @@ def main(argv: list[str] | None = None) -> int:
                     help="Override which participants to run (comma-separated NAMES from brief.yaml)")
     pc.add_argument("--profile", choices=profile_choices, default=None,
                     help=profile_help)
+    pc.add_argument("--namespace", default=None, help=ns_help)
 
     # judge
     pj = sub.add_parser("judge", help="Score all participant outputs with LLM judges")
@@ -138,6 +144,7 @@ def main(argv: list[str] | None = None) -> int:
                     help="Override judges (comma-separated, e.g. claude,gemini)")
     pj.add_argument("--profile", choices=profile_choices, default=None,
                     help=profile_help)
+    pj.add_argument("--namespace", default=None, help=ns_help)
 
     # refine
     prf = sub.add_parser("refine",
@@ -152,6 +159,7 @@ def main(argv: list[str] | None = None) -> int:
                           "across cooks).")
     prf.add_argument("--profile", choices=profile_choices, default=None,
                      help=profile_help)
+    prf.add_argument("--namespace", default=None, help=ns_help)
 
     # diff
     pdf = sub.add_parser("diff",
@@ -223,6 +231,7 @@ def main(argv: list[str] | None = None) -> int:
                               "(preserves partial outputs)")
     pcn.add_argument("name", help="Cook folder name")
     pcn.add_argument("--root", default="cooks")
+    pcn.add_argument("--namespace", default=None, help=ns_help)
 
     # resume
     prs = sub.add_parser("resume",
@@ -233,6 +242,7 @@ def main(argv: list[str] | None = None) -> int:
                      help="Also rerun cells that already succeeded")
     prs.add_argument("--profile", choices=profile_choices, default=None,
                      help=profile_help)
+    prs.add_argument("--namespace", default=None, help=ns_help)
 
     # tail
     pt = sub.add_parser("tail",
@@ -256,6 +266,21 @@ def main(argv: list[str] | None = None) -> int:
                      help="Show what would be removed; touch nothing")
     pcl.add_argument("--keep-creds", action="store_true",
                      help="Don't remove cooks/<task>/.auth/")
+
+    # prune (destructive: deletes old cook dirs)
+    ppr = sub.add_parser("prune",
+                         help="Delete cooks older than N days (docker teardown + "
+                              "remove dir). Destructive — see --keep-results.")
+    ppr.add_argument("--root", default="cooks")
+    ppr.add_argument("--older-than", type=float, required=True, metavar="DAYS",
+                     dest="older_than",
+                     help="Prune cooks whose last update is older than DAYS")
+    ppr.add_argument("--keep-results", action="store_true",
+                     help="Keep summary.json + leaderboard.md (remove everything else)")
+    ppr.add_argument("--prune-images", action="store_true",
+                     help="Also `docker image prune` + `builder prune` (dangling only)")
+    ppr.add_argument("--dry-run", action="store_true",
+                     help="List what would be pruned; touch nothing")
 
     args = p.parse_args(argv)
     if hasattr(args, "root"):
@@ -298,12 +323,14 @@ def main(argv: list[str] | None = None) -> int:
             name=args.name, root=Path(args.root),
             participants_override=_csv(args.participants),
             profile_override=args.profile,
+            namespace=args.namespace,
         )
     if args.cmd == "judge":
         return judge_cook(
             name=args.name, root=Path(args.root),
             judges_override=_csv(args.judges),
             profile_override=args.profile,
+            namespace=args.namespace,
         )
     if args.cmd == "refine":
         return refine(
@@ -311,6 +338,7 @@ def main(argv: list[str] | None = None) -> int:
             participants_override=_csv(args.participants),
             feedback_path=Path(args.feedback) if args.feedback else None,
             profile_override=args.profile,
+            namespace=args.namespace,
         )
     if args.cmd == "diff":
         return diff_rounds(
@@ -336,10 +364,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "status":
         return status_cmd(name=args.name, root=Path(args.root), as_json=args.as_json)
     if args.cmd == "cancel":
-        return cancel_cmd(name=args.name, root=Path(args.root))
+        return cancel_cmd(name=args.name, root=Path(args.root),
+                          namespace=args.namespace)
     if args.cmd == "resume":
         return resume(name=args.name, root=Path(args.root),
-                      force=args.force, profile_override=args.profile)
+                      force=args.force, profile_override=args.profile,
+                      namespace=args.namespace)
     if args.cmd == "tail":
         return tail_cmd(name=args.name, root=Path(args.root),
                         actor=args.actor, follow=args.follow)
@@ -348,6 +378,12 @@ def main(argv: list[str] | None = None) -> int:
             name=args.name, root=Path(args.root),
             all_cooks=args.all_cooks, dry_run=args.dry_run,
             keep_creds=args.keep_creds,
+        )
+    if args.cmd == "prune":
+        return prune(
+            root=Path(args.root), older_than_days=args.older_than,
+            keep_results=args.keep_results, dry_run=args.dry_run,
+            prune_images=args.prune_images,
         )
     return 2
 

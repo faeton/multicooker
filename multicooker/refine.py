@@ -231,7 +231,8 @@ def _run_one(cook_dir: Path, project: str, participant: dict,
 def refine(name: str, root: Path,
            participants_override: list[str] | None = None,
            feedback_path: Path | None = None,
-           profile_override: str | None = None) -> int:
+           profile_override: str | None = None,
+           namespace: str | None = None) -> int:
     cook_dir = root / name if not Path(name).is_absolute() else Path(name)
     if not cook_dir.exists():
         print(f"error: cook folder {cook_dir} does not exist", flush=True)
@@ -306,7 +307,8 @@ def refine(name: str, root: Path,
     state.append_event(cook_dir, "phase.started", cook=cook_dir.name, phase="refine",
                        payload={"round": round_num})
 
-    project = f"mc-{cfg['name']}".lower().replace("_", "-")
+    from .project import effective_project
+    project = effective_project(cook_dir, cfg["name"], namespace)
     flavors_needed = sorted({p.get("flavor", p["name"]) for p in participants})
 
     print(f"[refine] round {round_num}: project={project} flavors={flavors_needed}",
@@ -318,7 +320,8 @@ def refine(name: str, root: Path,
 
     # 2. Compose render (judges section may be re-rendered later by `judge`,
     #    but we still need participant services to exist.)
-    compose_render.render_compose(cook_dir, cfg, profile_override=profile_override)
+    compose_render.render_compose(cook_dir, cfg, profile_override=profile_override,
+                                  project=project)
 
     # 3. Per-participant prompts.
     prompts = {p["name"]: _build_prompt(cook_dir, p, round_num, shared_fb, brief_text)

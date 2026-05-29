@@ -16,13 +16,10 @@ from pathlib import Path
 import yaml
 
 from . import compose_runner, state
+from .project import project_from_compose, resolve_namespace
 
 
-def _project_name(cfg: dict) -> str:
-    return f"mc-{cfg['name']}".lower().replace("_", "-")
-
-
-def cancel_cmd(name: str, root: Path) -> int:
+def cancel_cmd(name: str, root: Path, namespace: str | None = None) -> int:
     cook_dir = root / name if not Path(name).is_absolute() else Path(name)
     if not cook_dir.exists():
         print(f"error: cook folder {cook_dir} does not exist", flush=True)
@@ -37,7 +34,10 @@ def cancel_cmd(name: str, root: Path) -> int:
     state.append_event(cook_dir, "cook.cancel_requested", cook=cook_dir.name)
     print(f"[cancel] marker written for {cook_dir.name}", flush=True)
 
-    project = _project_name(cfg)
+    # Prefer the project name the cook actually ran under (compose.yaml `name:`),
+    # so cancel finds the containers even if --namespace/env differs now.
+    project = project_from_compose(cook_dir, fallback_name=cfg.get("name"),
+                                   namespace=resolve_namespace(namespace))
     try:
         compose_runner.stop_project(cook_dir, project)
         print(f"[cancel] stopped compose project {project}", flush=True)

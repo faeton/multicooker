@@ -111,7 +111,13 @@ Both are idempotent — safe to re-run.
 - `multicooker clean <task>` — `docker compose down -v --rmi local` for
   the cook's compose project, plus removes `.auth/`. Add
   `--keep-creds` to skip the auth wipe; `--dry-run` to preview.
-- `multicooker clean --all` — same, for every `cooks/*/`.
+- `multicooker clean --all` — same, for every `cooks/*/`. `clean` never
+  deletes your results — only docker artifacts + `.auth/`.
+- `multicooker prune --older-than DAYS` — destructive retention: docker
+  teardown **and** removal of every cook dir whose `status.json.updated_at`
+  is older than `DAYS`. `--keep-results` keeps `summary.json` +
+  `leaderboard.md`; `--dry-run` previews; `--prune-images` also reclaims
+  dangling images + build cache.
 - `rm -rf cooks/<task>/` — nuclear; safe because `cooks/` is in the
   repo `.gitignore`.
 

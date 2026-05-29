@@ -23,12 +23,9 @@ import yaml
 
 from . import base_images, brief_schema, compose_render, compose_runner, state
 from .cook import _run_participant, _snapshot_creds_or_die
+from .project import effective_project
 from .report import _latest_run_result
 from .runner_common import copytree_clean
-
-
-def _project_name(cfg: dict) -> str:
-    return f"mc-{cfg['name']}".lower().replace("_", "-")
 
 
 def _archive_attempt(cook_dir: Path, round_num: int, name: str, *,
@@ -73,7 +70,8 @@ def _archive_attempt(cook_dir: Path, round_num: int, name: str, *,
 
 
 def resume(name: str, root: Path, force: bool = False,
-           profile_override: str | None = None) -> int:
+           profile_override: str | None = None,
+           namespace: str | None = None) -> int:
     cook_dir = root / name if not Path(name).is_absolute() else Path(name)
     if not cook_dir.exists():
         print(f"error: cook folder {cook_dir} does not exist", flush=True)
@@ -123,7 +121,7 @@ def resume(name: str, root: Path, force: bool = False,
         prompts[n] = ptxt.read_text()
 
     timeout_s = int(cfg.get("timeout_s", 30 * 60))
-    project = _project_name(cfg)
+    project = effective_project(cook_dir, cfg["name"], namespace)
     flavors_needed = sorted({pcfg[n].get("flavor", n) for n in targets})
 
     state.clear_cancel(cook_dir)
@@ -138,7 +136,8 @@ def resume(name: str, root: Path, force: bool = False,
         state.finalize(cook_dir, state.FAILED)
         return rc
 
-    compose_render.render_compose(cook_dir, cfg, profile_override=profile_override)
+    compose_render.render_compose(cook_dir, cfg, profile_override=profile_override,
+                                  project=project)
 
     keep_out = round_num != 1  # refine rounds edit ./out/ in place
     for n in targets:

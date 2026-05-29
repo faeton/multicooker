@@ -27,15 +27,25 @@ from . import host_profile, metrics
 
 
 def render_compose(cook_dir: Path, cfg: dict,
-                   profile_override: str | None = None) -> Path:
+                   profile_override: str | None = None,
+                   namespace: str | None = None,
+                   project: str | None = None) -> Path:
     """Write cook_dir/compose.yaml. Returns the path.
 
     `profile_override` comes from the CLI (--profile auto|large|medium|small).
     brief.yaml `resources.profile` and the MULTICOOKER_PROFILE env var
     are also honored via `host_profile.resolve_profile`.
+
+    Project naming: callers pass the already-resolved `project` (so the
+    command's `docker compose -p` and the baked compose `name:` can't diverge).
+    When omitted, it's resolved here from `namespace` via
+    `project.effective_project` (sticky: reuses an existing compose name when no
+    explicit namespace is given).
     """
     name = cfg["name"]
-    project = f"mc-{name}".lower().replace("_", "-")
+    if project is None:
+        from .project import effective_project
+        project = effective_project(cook_dir, name, namespace)
 
     top_resources = cfg.get("resources") or {}
     cfg_profile = top_resources.get("profile")
