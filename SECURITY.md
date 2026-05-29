@@ -43,3 +43,9 @@ The following are **known and intentional** — please don't report them:
   the documented bind mounts.
 - Credential leaks from `.auth/` to places other than the intended
   per-flavor RO mount.
+- Anything that weakens a cell's sandbox baseline — e.g. emitting
+  `security_opt: seccomp=unconfined`, `privileged: true`, or a
+  `cap_add` of `SYS_ADMIN`/`SYS_MODULE` from `compose_render`. The
+  baseline (default seccomp + `cap_drop: ALL` + `no-new-privileges` +
+  non-root) is load-bearing; see
+  [`docs/security.md`](docs/security.md#container-hardening-cve-2026-31431).

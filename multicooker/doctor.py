@@ -31,6 +31,24 @@ TEMPLATES_PARTICIPANTS = (
     Path(__file__).resolve().parent / "templates" / "cook" / "participants"
 )
 
+# In-container probe: try to create an AF_ALG socket (the CVE-2026-31431
+# "Copy Fail" escape primitive). Docker's default seccomp profile denies the
+# socket() call with EPERM, so on a correctly-configured host this raises and
+# we exit 0 ("blocked"). If the socket is created, default seccomp is disabled
+# or overridden — exit 3 ("allowed"), which is a hard fail. AF_ALG=38,
+# SOCK_SEQPACKET=5 (numeric, so the probe doesn't depend on the constant being
+# present in the image's Python build).
+_AF_ALG_PROBE = (
+    "import socket, sys\n"
+    "try:\n"
+    "    s = socket.socket(38, 5, 0)\n"
+    "    s.close()\n"
+    "except (PermissionError, OSError):\n"
+    "    sys.exit(0)\n"
+    "sys.exit(3)\n"
+)
+_AF_ALG_PROBE_IMAGE = "python:3-alpine"
+
 
 def _check_docker() -> tuple[bool, str]:
     try:
@@ -101,6 +119,52 @@ def _check_flavor(flavor: str) -> tuple[bool, str]:
                 msg = msg.split("\n", 1)[1].lstrip(" -")
             return False, msg
         return True, "creds present"
+
+
+def _check_af_alg_blocked() -> tuple[str, str]:
+    """Probe whether a container can create an AF_ALG socket (CVE-2026-31431).
+
+    Runs a plain `docker run` with no extra flags so it inherits exactly the
+    daemon's default posture. Returns (level, message) where level is one of
+    "OK" / "WARN" / "FAIL".
+
+    Note: contrary to a common assumption, Docker's *default* seccomp profile
+    does NOT reliably block the AF_ALG address family (verified: Docker 29.x /
+    OrbStack `profile=builtin` lets socket(AF_ALG) succeed). So:
+
+      - BLOCKED → "OK": something (a stricter seccomp profile, or a host that
+        denies it) is denying the socket — the in-container escape primitive is
+        gone.
+      - ALLOWED → "WARN", not "FAIL": the socket can be created, but whether
+        CVE-2026-31431 is exploitable depends on the *host* (patched kernel +
+        the algif modprobe block). We can't see that from inside a container,
+        so this points you at the host checks (Step C of the hardening plan):
+        `uname -r` is patched and `modprobe algif_aead` fails.
+    """
+    try:
+        out = subprocess.run(
+            ["docker", "run", "--rm", _AF_ALG_PROBE_IMAGE,
+             "python3", "-c", _AF_ALG_PROBE],
+            capture_output=True, text=True, timeout=180,
+        )
+    except FileNotFoundError:
+        return "WARN", "`docker` not on PATH — cannot run the AF_ALG probe."
+    except subprocess.TimeoutExpired:
+        return "WARN", (f"AF_ALG probe timed out (pulling {_AF_ALG_PROBE_IMAGE}?) "
+                        "— re-run `multicooker doctor --security`.")
+    if out.returncode == 0:
+        return "OK ", ("socket(AF_ALG) denied at the container layer "
+                       "(CVE-2026-31431 escape primitive blocked).")
+    if out.returncode == 3:
+        return "WARN", ("socket(AF_ALG) is ALLOWED inside containers — Docker's "
+                        "default seccomp does not block it. CVE-2026-31431 then "
+                        "depends on the HOST: verify the kernel is patched "
+                        "(`uname -r`) and the algif modprobe block is in place "
+                        "(`modprobe algif_aead` must fail). Never run with "
+                        "seccomp=unconfined / --privileged on top of this.")
+    err = (out.stderr or out.stdout).strip()
+    last = err.splitlines()[-1] if err else "unknown"
+    return "WARN", f"AF_ALG probe inconclusive (exit {out.returncode}): {last}"
 
 
 def _capacity_check(cfg: dict, profile_override: str | None,
@@ -194,6 +258,7 @@ def doctor(name: str | None, root: Path,
            participants_override: list[str] | None,
            strict: bool = False,
            capacity: bool = False,
+           security: bool = False,
            profile_override: str | None = None,
            concurrent_cooks: int = 1,
            reserve_mib: int = 2048) -> int:
@@ -272,6 +337,20 @@ def doctor(name: str | None, root: Path,
         print(f"  [{marker}] {flavor} creds: {msg}")
         if not ok:
             failed += 1
+
+    if security:
+        # Sandbox posture: can a container create the AF_ALG escape primitive
+        # (CVE-2026-31431)? "Allowed" is a WARN (host kernel/modprobe is the
+        # real barrier, invisible from here), not a hard FAIL — see
+        # _check_af_alg_blocked. Under --strict a WARN counts as a failure.
+        level, msg = _check_af_alg_blocked()
+        print(f"  [{level}] seccomp/AF_ALG: {msg}")
+        if level.strip() == "FAIL":
+            failed += 1
+        elif level.strip() == "WARN":
+            warned += 1
+            if strict:
+                failed += 1
 
     if capacity:
         if cfg is None:

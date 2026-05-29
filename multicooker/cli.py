@@ -81,6 +81,9 @@ def main(argv: list[str] | None = None) -> int:
     pd.add_argument("--capacity", action="store_true",
                     help="Also check host capacity against per-cell mem_limits "
                          "(reads `docker info` from the active docker context)")
+    pd.add_argument("--security", action="store_true",
+                    help="Also verify Docker's default seccomp blocks socket(AF_ALG) "
+                         "(CVE-2026-31431) by running a throwaway probe container")
     pd.add_argument("--profile", choices=["auto", "large", "medium", "small"],
                     default=None,
                     help="Profile to use when planning capacity (default: auto-detect)")
@@ -319,6 +322,7 @@ def main(argv: list[str] | None = None) -> int:
             participants_override=_csv(args.participants),
             strict=args.strict,
             capacity=args.capacity,
+            security=args.security,
             profile_override=args.profile,
             concurrent_cooks=args.concurrent_cooks,
             reserve_mib=args.reserve_mib,

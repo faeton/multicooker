@@ -43,8 +43,12 @@ properties:
   network.
 
 If a specific cook needs a strict allowlist (sensitive raw, audit
-mode), it's added via a local `compose.override.yaml` — that's a
-cook-level decision, not the default.
+mode), restrict egress in the rendered `compose.yaml` (e.g.
+`network_mode: none` per service) and run the cell with `docker
+compose` directly, or patch `compose_render`. Note: a drop-in
+`compose.override.yaml` is **not** auto-merged — the runner invokes
+`docker compose -f compose.yaml`, which disables Compose's override
+auto-loading. That's a cook-level decision, not the default.
 
 ## Participant container
 

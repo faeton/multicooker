@@ -151,6 +151,41 @@ def _resolve_limits(actor: dict, top_resources: dict,
     }
 
 
+# Non-negotiable sandbox baseline, applied to every cell (participant + judge).
+#
+# These containers run untrusted, model-driven agents on a kernel shared with
+# the host, so this posture is load-bearing — see docs/security.md.
+#
+#   - Docker's DEFAULT seccomp profile is left in force: we never emit
+#     `security_opt: seccomp=unconfined`. That default is what denies
+#     `socket(AF_ALG)` inside the container — the CVE-2026-31431 (Copy Fail)
+#     local-priv-esc / container-escape primitive. Re-enabling it would
+#     reopen the hole. Never add `seccomp=unconfined`, `privileged`, or a
+#     `cap_add` of SYS_ADMIN/SYS_MODULE here.
+#   - cap_drop ALL: the agent CLIs need zero Linux capabilities — TCP/TLS
+#     egress, DNS, file writes to the bind mounts, and OAuth token refresh
+#     all work without any. Add none back by default.
+#   - no-new-privileges: blocks setuid/setcap privilege gain inside the cell.
+#   - user 1000:1000: every flavor image already runs non-root as uid 1000
+#     (node, and dummy's `mv`); pinning it at the compose layer keeps that
+#     true even if an image is swapped or a Dockerfile drops its `USER`.
+#
+# Not enabled by default: a read-only rootfs. Participants legitimately run
+# arbitrary build tooling (npm/pip install, compilers) while solving a task,
+# which writes outside the bind mounts. A cook that wants it can add
+# `read_only: true` + tmpfs mounts to its own service.
+HARDENING_CAP_DROP = ["ALL"]
+HARDENING_SECURITY_OPT = ["no-new-privileges:true"]
+HARDENING_USER = "1000:1000"
+
+
+def _apply_hardening(service: dict) -> None:
+    """Mutate `service` to add the non-negotiable sandbox baseline."""
+    service["cap_drop"] = list(HARDENING_CAP_DROP)
+    service["security_opt"] = list(HARDENING_SECURITY_OPT)
+    service["user"] = HARDENING_USER
+
+
 def _apply_limits(service: dict, limits: dict[str, Any]) -> None:
     """Mutate `service` to add resource limits + cheap safeties.
 
@@ -262,6 +297,7 @@ def _participant_service(cook_dir: Path, participant_name: str,
         # Don't restart on failure — we want a definitive exit.
         "restart": "no",
     }
+    _apply_hardening(service)
     if limits is not None:
         _apply_limits(service, limits)
     return service
@@ -304,6 +340,7 @@ def _judge_service(cook_dir: Path, judge_name: str, flavor: str,
         ],
         "restart": "no",
     }
+    _apply_hardening(service)
     if limits is not None:
         _apply_limits(service, limits)
     return service

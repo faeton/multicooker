@@ -9,6 +9,11 @@ What multicooker protects against, what it doesn't, and why.
   `--dangerously-bypass-approvals-and-sandbox`) are required for
   headless operation and are safe inside the container — they
   cannot reach the host.
+- **Every cell runs a hardened, non-root container.** `compose_render`
+  emits `cap_drop: [ALL]`, `security_opt: [no-new-privileges:true]`,
+  and `user: "1000:1000"` on every participant and judge, and never
+  emits anything that loosens Docker's default seccomp. See
+  [Container hardening](#container-hardening-cve-2026-31431).
 - **Per-cook bridge networks isolate participants from each other.**
   Each participant and each judge gets its own
   `net-{participant,judge}-<name>` network. They cannot DNS or
@@ -38,12 +43,67 @@ What multicooker protects against, what it doesn't, and why.
 
 | Non-goal | Why |
 |---|---|
-| Container escape via Docker / kernel CVEs | We trust Docker's isolation. If you need stronger isolation, run multicooker inside a VM. |
+| Container escape via Docker / kernel CVEs | Mitigated, not eliminated. The in-container baseline (default seccomp + `cap_drop: ALL` + `no-new-privileges` + non-root) shrinks the attack surface; the *primary* barrier for kernel-CVE escapes is host-side (patched kernel, and for AF_ALG the `algif` modprobe block — see [Container hardening](#container-hardening-cve-2026-31431)). For stronger isolation, run multicooker inside a VM or under rootless Podman / userns-remap. |
 | Stealing the participant's own creds | A compromised CLI binary has access to the auth files mounted for it. The cost of headless subscription auth. Mitigation: don't run multicooker with CLIs you don't trust. |
 | Network-level data exfiltration | Egress is open. If your `raw/` is sensitive, see "Sensitive raw materials" below. |
 | Accidentally including `.env`, secrets in `raw/` | You control `raw/`. We mount it RO; we don't scan it. |
 | Re-using a leaked OAuth token | If your subscription creds leak, rotate them with the upstream provider (`claude /login`, `codex` re-auth, `gemini` re-auth, `grok login`). |
 | Judge collusion / reward hacking by the model itself | Out of scope — this is an alignment problem, not a tooling one. |
+
+## Container hardening (CVE-2026-31431)
+
+Cells run untrusted, model-driven agents on a kernel **shared with the
+host**. That is the exact threat model for local-priv-esc / container-escape
+CVEs such as **CVE-2026-31431** ("Copy Fail" — `AF_ALG` / `algif_aead`
+escalation via the shared page cache). The posture below is applied
+automatically by `multicooker/compose_render.py` to every participant and
+judge service:
+
+| Setting | Why |
+|---|---|
+| Default seccomp profile (never `seccomp=unconfined`) | We never weaken the daemon's profile. Disabling it would re-expose syscalls the agent has no reason to call. |
+| `cap_drop: [ALL]` | The CLIs need zero Linux capabilities — TCP/TLS egress, DNS, writes to the bind mounts, and OAuth token refresh all work with none. Nothing is added back. |
+| `security_opt: [no-new-privileges:true]` | Blocks setuid/setcap privilege gain inside the cell. |
+| `user: "1000:1000"` | Every flavor image is already non-root (uid 1000); pinning it at the compose layer keeps that true even if an image is swapped or a Dockerfile drops its `USER`. |
+
+**The load-bearing rule:** never add `security_opt: seccomp=unconfined`,
+`privileged: true`, or a `cap_add` of `SYS_ADMIN`/`SYS_MODULE` to a cell.
+`tests/test_compose_hardening.py` fails if the render ever grows one.
+
+### Important: default seccomp does NOT block AF_ALG by itself
+
+A common assumption (including in the original hardening plan) is that
+Docker's default seccomp profile already blocks `socket(AF_ALG)`. **That is
+not true on current engines** — verified on Docker 29.x / OrbStack
+(`docker info` → `seccomp,profile=builtin`), where `socket(AF_ALG,
+SOCK_SEQPACKET)` succeeds inside a stock container. So for CVE-2026-31431 the
+real barriers live on the **host**, outside this repo:
+
+1. **Patched kernel** (Debian ≥ 6.12.86-1 / DSA-6238-1).
+2. **`algif` modprobe block** so the vulnerable modules can't autoload:
+   `install algif_aead /bin/false` (+ `algif_skcipher`, `algif_hash`,
+   `algif_rng`, `af_alg`).
+3. **Actually reboot** after a kernel security upgrade — unattended-upgrades
+   installs the new kernel but does not reboot, so the box keeps running the
+   old vulnerable one until `/var/run/reboot-required` is acted on.
+
+These belong in host provisioning (Ansible / install-image post-step), not
+in multicooker. To check a host's posture from the repo:
+
+```bash
+multicooker doctor --security      # probes socket(AF_ALG) in a throwaway container
+```
+
+`OK` means the socket is denied at the container layer; `WARN` means it is
+creatable, so confirm the host kernel patch + modprobe block (`uname -r`,
+`modprobe algif_aead` must fail). Add `--strict` to make the WARN a
+non-zero exit for CI gating.
+
+**Optional stronger isolation:** ship a custom seccomp profile that denies
+`AF_ALG` and wire it into every cell via `security_opt: seccomp=<profile>`,
+or run cells under rootless Podman / Docker userns-remap so even a seccomp
+bypass lands as an unprivileged host uid. Both are larger changes; the host
+kernel patch + modprobe block remain the primary defense.
 
 ## Sensitive raw materials
 
@@ -53,9 +113,13 @@ participant has open internet egress. Treat anything in `raw/` as
 fetches." If that's not acceptable:
 
 - Don't put real secrets / PII / proprietary data into `raw/`.
-- Or, drop a per-cook `compose.override.yaml` that adds
-  `network_mode: none` or a strict allowlist proxy. multicooker
-  doesn't ship this by default because most cooks need internet.
+- Or cut egress by adding `network_mode: none` (or a strict allowlist
+  proxy) to the cells. Note: the runner invokes `docker compose -f
+  compose.yaml`, which **disables** Compose's automatic merge of a
+  `compose.override.yaml` — so a drop-in override file does *not* take
+  effect. Edit the rendered `compose.yaml` and re-run the cell with
+  `docker compose` directly, or patch `compose_render`. multicooker
+  doesn't isolate the network by default because most cooks need internet.
 
 ## Credential handling
 
@@ -106,9 +170,11 @@ What you can do:
 - **Rotate aggressively if a leak is suspected:** `claude /login`,
   re-auth `codex` and `gemini`, `grok login` from the host. The next
   snapshot picks up the new tokens.
-- **For high-stakes raw data**, drop a per-cook
-  `compose.override.yaml` with `network_mode: none` or a strict
-  allowlist proxy — at the cost of breaking package fetches.
+- **For high-stakes raw data**, cut egress with `network_mode: none`
+  or a strict allowlist proxy — at the cost of breaking package
+  fetches. (As above, a drop-in `compose.override.yaml` is *not*
+  auto-merged because the runner pins `-f compose.yaml`; edit the
+  rendered `compose.yaml` or patch `compose_render`.)
 
 ## Anti-self-judging (anonymization)
 
