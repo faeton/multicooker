@@ -22,7 +22,7 @@ judging account.
 - claude (macOS): Keychain entry `"Claude Code-credentials"`.
 - claude (Linux): `~/.claude/.credentials.json`.
 - codex: `~/.codex/auth.json`.
-- gemini: `~/.gemini/oauth_creds.json` + `settings.json`.
+- agy: `~/.gemini/oauth_creds.json` + `settings.json` (reused from gemini).
 
 Snapshot reads the source and drops it into `cooks/<task>/.auth/<flavor>/`.
 
@@ -87,9 +87,9 @@ produce structured output. Available modes:
 - claude: `--output-format stream-json` — produces JSONL with tool
   calls/results.
 - codex: `exec` has `--json` (event stream).
-- gemini: at the time of writing, no structured mode.
+- agy: at the time of writing, no structured mode.
 
-So switching to structured traces either breaks gemini support, or
+So switching to structured traces either breaks agy support, or
 requires two modes: structured where available, text dump where not.
 
 **Pragmatics.** If we ever do it — start with claude-only

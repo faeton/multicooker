@@ -1,6 +1,6 @@
 # Adding a new flavor (CLI agent)
 
-Multicooker ships with `claude`, `codex`, `gemini`, `grok`, and `dummy`.
+Multicooker ships with `claude`, `codex`, `agy`, `grok`, and `dummy`.
 To add a new CLI agent (e.g. aider, cursor-cli, ollama-runner, a local
 binary) — follow this guide. ~10 minutes of copy-paste; most of the time
 will go into debugging your CLI's argv.
@@ -8,7 +8,8 @@ will go into debugging your CLI's argv.
 ## What to decide up front
 
 1. **How does the CLI authenticate?** Via subscription OAuth files on the
-   host (like claude/codex/gemini/grok)? Via an API key in env? No auth
+   host (like codex/grok), or the OS keyring (like claude/agy)? Via an API
+   key in env? No auth
    (like `dummy`)? This affects `creds.py`.
 2. **Is there a non-interactive flag?** If the CLI hangs on approval
    prompts in headless mode without something like `--yes`, `--yolo`,
@@ -77,7 +78,8 @@ selection from the brief).
 If the flavor is headless (no auth) — add it to the `elif f == "dummy":
 pass` branch in `snapshot()`. If it has subscription creds — write your
 own `_snapshot_myflavor(into)`, analogous to the existing `_snapshot_codex`
-/ `_snapshot_gemini`. Standard form: check the source exists, copy into
+(plain file) or `_snapshot_agy` (extracts an OS-keyring secret on macOS,
+copies a file on Linux). Standard form: check the source exists, copy into
 `.auth/<flavor>/<file>` with `chmod 0600`. **Creds must live in a RO
 bind-mount** inside the container; the path is wired up in
 `compose_render.py`.
@@ -130,8 +132,10 @@ in schema, missing base). `cook` fails with a clear exit code if
 - **Headless / no auth:** `templates/cook/participants/dummy/` (layout
   A, alpine, ~10-line entrypoint).
 - **Subscription OAuth + npm-installed CLI:**
-  `templates/cook/participants/claude/` or `gemini/` (layout B,
-  base = node:22-slim + npm).
+  `templates/cook/participants/claude/` (layout B, base = node:22-slim + npm).
+- **Standalone binary via install script:** `agy` (layout B,
+  base = debian-slim + `curl … | bash`) — also the example for a CLI
+  whose creds live in the OS keyring, bridged to a file by `_snapshot_agy`.
 - **Plain-file auth (`~/.<cli>/auth.json`)**: `codex` — the simplest
   example with `_snapshot_codex` in `creds.py`.
 

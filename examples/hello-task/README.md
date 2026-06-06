@@ -28,5 +28,5 @@ The `dummy` flavor:
 - judge assigns fixed scores and writes a review with `A/B/C` labels.
 
 Want to try it on real agents? Change `flavor: dummy` in `brief.yaml` to
-`claude`/`codex`/`gemini` — otherwise the example is shaped exactly like
+`claude`/`codex`/`agy` — otherwise the example is shaped exactly like
 a "real" cook.

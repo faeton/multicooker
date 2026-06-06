@@ -28,7 +28,7 @@ from typing import Any
 
 # Flavors known to creds.py. Adding a flavor = adding here AND in creds.py
 # AND providing a Dockerfile under templates/cook/participants/<flavor>/.
-KNOWN_FLAVORS = frozenset({"claude", "codex", "gemini", "grok", "dummy"})
+KNOWN_FLAVORS = frozenset({"claude", "codex", "agy", "grok", "dummy"})
 
 # Mirror of host_profile.VALID_PROFILES; duplicated to keep brief_schema
 # import-free of subprocess-using modules (cheaper unit tests).

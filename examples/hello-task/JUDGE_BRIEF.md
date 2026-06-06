@@ -36,5 +36,5 @@ ranking, no flavor names.
 - Score every submission you receive, even if it's empty (give 0s and
   say so in the review).
 - Use only the rubric dimensions above; don't invent new ones.
-- No mention of `claude` / `codex` / `gemini` / specific model names —
+- No mention of `claude` / `codex` / `agy` / specific model names —
   the labels are `A`, `B`, `C`, …

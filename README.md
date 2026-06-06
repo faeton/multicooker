@@ -1,6 +1,6 @@
 # multicooker
 
-Run several LLM agents (`claude`, `codex`, `gemini`, `grok`) on
+Run several LLM agents (`claude`, `codex`, `agy`, `grok`) on
 **the same task** in parallel — each in its own docker container
 with its own subscription auth — then have **other** LLM agents
 read the outputs blind (under `A` / `B` / `C` labels), score them
@@ -48,7 +48,7 @@ the same brief in one shot. Useful when:
         ┌───────────────────────────┼───────────────────────────┐
         ▼                           ▼                           ▼
  ┌─────────────┐             ┌─────────────┐             ┌─────────────┐
- │  claude     │             │  codex      │             │  gemini     │
+ │  claude     │             │  codex      │             │  agy        │
  │  container  │   (parallel)│  container  │  (parallel) │  container  │
  │  net-A      │             │  net-B      │             │  net-C      │
  │  /work/...  │             │  /work/...  │             │  /work/...  │
@@ -66,7 +66,7 @@ the same brief in one shot. Useful when:
        ┌─────────────────┐                         ┌─────────────────┐
        │  judge-1        │                         │  judge-2        │
        │  (claude/codex/ │  scores everyone except │  (different     │
-       │   gemini)       │  its own flavor         │   flavor)       │
+       │   agy)          │  its own flavor         │   flavor)       │
        └────────┬────────┘                         └────────┬────────┘
                 │ scores.json + review.md                   │
                 └─────────────────────┬─────────────────────┘
@@ -109,9 +109,9 @@ Requirements:
   also work.
 - Python 3.10+.
 - At least one of these CLIs installed and logged in: `claude`
-  (`claude /login`), `codex` (`codex` to log in), `gemini`
-  (`gemini` to log in), `grok` (`grok login`). Only the flavors
-  you actually want to run.
+  (`claude /login`), `codex` (`codex` to log in), `agy`
+  (reuses your `~/.gemini/oauth_creds.json` OAuth), `grok`
+  (`grok login`). Only the flavors you actually want to run.
 
 Want to try the pipeline without subscription creds? There's a
 `dummy` flavor — see [`examples/hello-task`](examples/hello-task/).
@@ -121,7 +121,7 @@ Want to try the pipeline without subscription creds? There's a
 The fastest way to use multicooker is to fire up an LLM agent
 **inside the repo** and let it scaffold and run the cook for you.
 The repo ships with a `CLAUDE.md` (and an `AGENTS.md` symlink for
-codex / gemini) that already explains the project, the shape of a
+codex / agy) that already explains the project, the shape of a
 cook, and the rule that the rubric stays in sync between
 `brief.yaml` and `JUDGE_BRIEF.md`. Any agent reading it can do the
 boring part for you.
@@ -130,13 +130,13 @@ boring part for you.
 git clone https://github.com/faeton/multicooker && cd multicooker
 pip install -e .
 
-claude        # or: codex, or: gemini — they all read AGENTS.md
+claude        # or: codex, or: agy — they all read AGENTS.md
 ```
 
 Then describe what you want in plain language:
 
 > *"Set up a cook called `landing-redesign`. Compare
-> claude / codex / gemini on a single-file HTML hero for [product].
+> claude / codex / agy on a single-file HTML hero for [product].
 > Judge on visual-hierarchy, typography, color-discipline,
 > content-fit, polish. References are at `~/work/brand/notes.md`
 > and `~/work/brand/voice.md`. Then run cook + judge + report."*
@@ -263,8 +263,8 @@ signal: on design tasks, judge disagreement means there's no
 with your eyes.
 
 ```bash
-# Run the design example (requires claude/codex/gemini logins; grok optional)
-multicooker new landing --participants claude,codex,gemini,grok
+# Run the design example (requires claude/codex/agy logins; grok optional)
+multicooker new landing --participants claude,codex,agy,grok
 TASK=$(basename "$(ls -d cooks/*-landing | tail -1)")
 cp examples/design-landing/{BRIEF.md,JUDGE_BRIEF.md,brief.yaml} cooks/$TASK/
 cp examples/design-landing/raw/* cooks/$TASK/raw/
@@ -307,7 +307,7 @@ feedback to heart vs which one just rephrased the previous answer.
 
 ```bash
 multicooker new comparison \
-  --participants claude-a=claude,claude-b=claude,codex,gemini
+  --participants claude-a=claude,claude-b=claude,codex,agy
 ```
 
 Per-participant model selection lives in `brief.yaml`:

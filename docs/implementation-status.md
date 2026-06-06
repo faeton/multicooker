@@ -21,7 +21,7 @@ What's wired up today, in one line each:
 
 - `build-base` builds shared `mc-base-<flavor>` images (node:22-slim + each CLI).
 - `creds.py` snapshots subscription auth for all four flavors
-  (claude/codex/gemini/grok) into per-cook `.auth/`, bind-mounted RO. claude on
+  (claude/codex/agy/grok) into per-cook `.auth/`, bind-mounted RO. claude on
   macOS is read from the Keychain entry `Claude Code-credentials` (same JSON
   shape Linux expects) — this is intentional, not a thing to avoid.
 - `compose_render.py` generates `cooks/<name>/compose.yaml`; `host_profile.py`

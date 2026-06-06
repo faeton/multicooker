@@ -1,5 +1,5 @@
-# Per-cook gemini image. See templates/base/gemini/Dockerfile for the heavy bits.
-FROM mc-base-gemini:latest
+# Per-cook agy image. See templates/base/agy/Dockerfile for the heavy bits.
+FROM mc-base-agy:latest
 
 USER root
 COPY entrypoint.sh /usr/local/bin/mc-entrypoint

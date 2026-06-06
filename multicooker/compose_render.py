@@ -237,12 +237,13 @@ def _auth_volumes(flavor: str, cook_dir: Path) -> list[str]:
         # writes during a cook won't persist back to the snapshot, but cooks
         # finish well within the ~6h token lifetime.
         return [f"{auth}/grok/auth.json:/home/node/.grok/auth.json:ro"]
-    if flavor == "gemini":
-        # gemini needs settings.json + oauth_creds.json + a few small id files,
-        # plus it writes a project registry to .gemini/projects.json at startup.
-        # Mount the whole .gemini snapshot RW; creds are re-snapshotted each cook
-        # so transient writes don't leak into the host's ~/.gemini.
-        return [f"{auth}/gemini/:/home/node/.gemini/:rw"]
+    if flavor == "agy":
+        # agy reuses ~/.gemini: settings.json + oauth_creds.json + a few small
+        # id files, plus it writes a project registry to .gemini/projects.json
+        # at startup. Mount the whole .gemini snapshot RW; creds are
+        # re-snapshotted each cook so transient writes don't leak into the
+        # host's ~/.gemini.
+        return [f"{auth}/agy/:/home/node/.gemini/:rw"]
     if flavor == "dummy":
         # Smoke-test flavor — no creds, no auth mount.
         return []
@@ -258,7 +259,10 @@ def _usage_volumes(flavor: str, cook_dir: Path, cell_kind: str, name: str) -> li
         return [f"{root}/projects:/home/node/.claude/projects:rw"]
     if flavor == "codex":
         return [f"{root}/sessions:/home/node/.codex/sessions:rw"]
-    if flavor == "gemini":
+    if flavor == "agy":
+        # agy writes telemetry under ~/.gemini (legacy tmp/history plus its own
+        # antigravity-cli/ state). Capture the legacy ledger dirs cook-local;
+        # see metrics._collect_agy for the parser inherited from gemini-cli.
         return [
             f"{root}/tmp:/home/node/.gemini/tmp:rw",
             f"{root}/history:/home/node/.gemini/history:rw",

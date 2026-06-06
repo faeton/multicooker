@@ -3,7 +3,7 @@
 Verifies, before you commit to a long cook, that:
   - docker is installed and the daemon is reachable;
   - `docker compose` v2 is available;
-  - subscription creds exist for each requested flavor (claude/codex/gemini)
+  - subscription creds exist for each requested flavor (claude/codex/agy)
     in the format the snapshot code expects.
 
 Exits 0 if everything checks out, 1 otherwise. Prints one line per check,
@@ -288,7 +288,7 @@ def doctor(name: str | None, root: Path,
     elif participants_override:
         flavors = sorted(set(participants_override))
     else:
-        flavors = ["claude", "codex", "gemini"]
+        flavors = ["claude", "codex", "agy"]
 
     failed = 0
     warned = 0

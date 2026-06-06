@@ -101,7 +101,7 @@ what's been knocked out in recent sessions.
 
 - [ ] Extend `creds.py` for the case where the user has multiple
   Anthropic/Google accounts and needs to pick a profile. Right now
-  there's one Keychain entry, one gemini config. Design deferred —
+  there's one Keychain entry, one agy config (`~/.gemini`). Design deferred —
   see `docs/design-notes.md` §"Multi-account creds".
 - [x] Document the risk: subscription OAuth files are mounted into the
   container and accessible to the agent inside the sandbox. A
@@ -121,7 +121,7 @@ what's been knocked out in recent sessions.
   takes `model:` per participant/judge; compose-render forwards it
   into the container as `MULTICOOKER_MODEL=...`, and each
   entrypoint.sh adds the matching argv (`--model` for claude and
-  gemini, `-c model=...` for codex). No model = the CLI picks for
+  agy, `-c model=...` for codex). No model = the CLI picks for
   itself like before.
 - [x] Support **new CLIs** without editing the templates:
   `templates/cook/participants/_custom/{Dockerfile,entrypoint.sh}.example`

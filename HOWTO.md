@@ -48,7 +48,7 @@ Lessons squeezed out of that experience are described at the end.
             ┌──────────────┬──────┴───────┬──────────────┐
             ▼              ▼              ▼              ▼
        ┌────────┐     ┌────────┐     ┌────────┐     ┌────────┐
-       │ claude │     │ codex  │     │ gemini │     │ grok   │  ← parallel,
+       │ claude │     │ codex  │     │ agy    │     │ grok   │  ← parallel,
        │ /work/ │     │ /work/ │     │ /work/ │     │ /work/ │    isolated
        └───┬────┘     └───┬────┘     └───┬────┘     └───┬────┘
            │     raw/ (read-only, shared)               │
@@ -60,7 +60,7 @@ Lessons squeezed out of that experience are described at the end.
               ▼                        ▼
          ┌────────┐              ┌────────┐
          │ judge  │              │ judge  │           ← scoring panel
-         │ claude │              │ gemini │             (anonymized A/B/C/D)
+         │ claude │              │ agy    │             (anonymized A/B/C/D)
          └───┬────┘              └───┬────┘
              │                       │
              └─────────┬─────────────┘
@@ -98,7 +98,7 @@ cooks/my-task/
 └── work/                # participant work folders (created empty)
     ├── claude/
     ├── codex/
-    └── gemini/
+    └── agy/
 ```
 
 After `multicooker cook my-task` the following are added:
@@ -163,8 +163,8 @@ Each CLI has its own "you hit the limit" patterns (see
 `multicooker/runner_common.py:_RL_PATTERNS`). If they appear in the
 tail of stdout/stderr — the participant is marked `rate_limited`
 with a pointer to the specific evidence line. **We don't block the
-others** — claude and gemini have independent limits, codex may
-die, claude and gemini will finish normally.
+others** — claude and agy have independent limits, codex may
+die, claude and agy will finish normally.
 
 ### macOS sleep detection
 On a Mac `caffeinate -dimsu -w <pid>` prevents the system from
@@ -204,7 +204,7 @@ except symlinks).
 
 ```python
 participants = brief.participants
-mapping = {A: claude, B: codex, C: gemini, D: grok} (random shuffle)
+mapping = {A: claude, B: codex, C: agy, D: grok} (random shuffle)
 copy each work/<participant>/ → _judge_input/submissions/<letter>/
 for judge in brief.judges:
     warn if judge.flavor == any participant.flavor   # anti-self-judge (advisory only)
@@ -234,7 +234,7 @@ to score "its own" higher (or the opposite, lowballing to
 compensate). Anonymization plus the anti-self-judge rule remove the
 crudest sources of bias.
 
-Be aware: **bias is not fully removed**. claude vs gemini code
+Be aware: **bias is not fully removed**. claude vs agy code
 style is recognizable. If you want more — add a third judge (any
 anti-bias measure benefits from larger N), and/or ask an agent
 wrapper to paraphrase outputs before judging (not implemented in
@@ -323,7 +323,7 @@ For a typical "write a 2-page essay" task: ~$0.30–$1.50. For
 "rewrite this repository": ~$5–$30 (depends on size).
 
 `multicooker` records best-effort local usage for Claude, Codex, and
-Gemini by mounting each CLI's normal history directory into the cook
+agy by mounting each CLI's normal history directory into the cook
 folder. Participant totals land in `RUN_RESULT.json` and per-cell
 `work/<participant>/trace.json`; judge totals land in
 `JUDGE_RESULT.json`. `leaderboard.md` shows duration, token totals, and
@@ -335,7 +335,7 @@ cost when the underlying CLI ledger exposes it.
 ```
 brew install claude-code     # or the official anthropic installer
 ```
-Same for `codex`, `gemini`, and `grok`. If you don't need a
+Same for `codex`, `agy`, and `grok`. If you don't need a
 particular participant — remove it from `brief.yaml` before cook.
 
 ### "the judge didn't write scores.json"
@@ -361,7 +361,7 @@ saturate a laptop. Lower parallelism:
 participants:
   - name: claude
     flavor: claude
-  # codex and gemini commented out; run in two passes
+  # codex and agy commented out; run in two passes
 ```
 v0.2 wants a `--max-parallel N` flag.
 
@@ -409,7 +409,7 @@ then seals that chef output like any other participant:
 multicooker chef 260509-my-task \
   --chef chef=codex \
   --base codex \
-  --donors claude,gemini,grok
+  --donors claude,agy,grok
 
 multicooker rejudge 260509-my-task
 multicooker report 260509-my-task
@@ -457,7 +457,7 @@ list):
 5. **Web report** — `multicooker serve <name>` shows HTML with
    diffs between submissions, judging logs, and the leaderboard.
 6. **Cross-cook leaderboard** — global table "claude wins 6 out
-   of 10 tasks, grok 2, codex 1, gemini 1".
+   of 10 tasks, grok 2, codex 1, agy 1".
 
 ## Lessons from reproxy/arena
 

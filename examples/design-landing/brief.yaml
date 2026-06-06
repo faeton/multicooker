@@ -7,12 +7,12 @@ judge_timeout_s: 300
 participants:
   - { name: claude, flavor: claude }
   - { name: codex,  flavor: codex }
-  - { name: gemini, flavor: gemini }
+  - { name: agy, flavor: agy }
   - { name: grok,   flavor: grok }
 
 # Anti-self-judge: each judge scores everyone except its own flavor.
 # Two judges of different flavors give robust coverage — each participant
-# is scored by at least one non-self judge. Add a third (e.g. gemini-judge
+# is scored by at least one non-self judge. Add a third (e.g. agy-judge
 # or grok-judge) if you want symmetric coverage at higher cost.
 judges:
   - { name: claude-judge, flavor: claude }

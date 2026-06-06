@@ -8,7 +8,7 @@
 #
 # Both modes are deterministic, exit 0 quickly, and need zero network or
 # credentials. Anything fancier defeats the purpose — for real LLM
-# behavior use claude/codex/gemini.
+# behavior use claude/codex/agy.
 set -e
 
 if [ -n "$MULTICOOKER_JUDGE" ]; then

@@ -2,7 +2,7 @@
 
 This is a port/extension of what was in
 `reproxy/arena/coding-sandbox/README.md`. Goal: run `claude` /
-`codex` / `gemini` inside Linux containers on a macOS host, using
+`codex` / `agy` inside Linux containers on a macOS host, using
 subscriptions, without `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` /
 `GEMINI_API_KEY`.
 
@@ -29,11 +29,12 @@ directly (essentially option A without the extraction step).
 | CLI    | macOS host                                          | Linux container               |
 |--------|-----------------------------------------------------|-------------------------------|
 | codex  | `~/.codex/auth.json` (plain file)                   | `/root/.codex/auth.json`      |
-| gemini | `~/.gemini/oauth_creds.json` (plain file)           | `/root/.gemini/oauth_creds.json` |
+| agy    | **macOS Keychain** (`go-keyring`, svc `gemini` / acct `antigravity`) | `~/.gemini/antigravity-cli/antigravity-oauth-token` (plain JSON) |
 | grok   | `~/.grok/auth.json` (plain file)                    | `/home/node/.grok/auth.json`  |
 | claude | **macOS Keychain** (can't pull into a container)    | `~/.claude/` (plain files after `claude /login`) |
 
-`codex`, `gemini`, and `grok` — simple RO bind-mount. `claude` is trickier.
+`codex` and `grok` — simple RO bind-mount. `agy` and `claude` are
+trickier (Keychain on macOS).
 
 ## codex — bind-mount
 
@@ -51,16 +52,40 @@ rare. If the token does go stale — refresh on the host (`codex` on
 the host), the new file is automatically visible inside the
 container on the next cook.
 
-## gemini — bind-mount
+## agy — Keychain snapshot (macOS) / file copy (Linux)
 
-Same idea:
+agy (Google Antigravity CLI, the successor to gemini-cli) does **not**
+keep its session in a plain file on macOS — it uses the login Keychain
+via `zalando/go-keyring`, stored under service `gemini` / account
+`antigravity`, with the value wrapped as
+`go-keyring-base64:<base64(json)>`.
 
-```yaml
-volumes:
-  - ${HOME}/.gemini/oauth_creds.json:/root/.gemini/oauth_creds.json:ro
-```
+The Linux build of agy is different: it reads its OAuth token from a
+plain file, `~/.gemini/antigravity-cli/antigravity-oauth-token`
+(the decoded token JSON), and never touches a keyring. So the snapshot
+bridges the two:
 
-Same caveats about refresh.
+- **macOS host:** `creds.py` extracts the Keychain blob
+  (`security find-generic-password -s gemini -a antigravity -w`),
+  strips the `go-keyring-base64:` prefix, base64-decodes it, and writes
+  the result to
+  `cooks/<task>/.auth/agy/antigravity-cli/antigravity-oauth-token`.
+- **Linux host:** agy already stores that file at
+  `~/.gemini/antigravity-cli/antigravity-oauth-token` — it's copied
+  verbatim.
+
+Alongside the token, the small `~/.gemini` account-config files
+(`oauth_creds.json`, `settings.json`, `google_accounts.json`,
+`installation_id`, `trustedFolders.json`) are copied so agy knows which
+account the token belongs to. The whole `.auth/agy/` snapshot is mounted
+**RW** at `/home/node/.gemini/` (agy refreshes the access token and
+writes runtime state under `antigravity-cli/`; RW keeps those writes
+cook-local instead of failing). Re-snapshotted each cook, so a host
+re-login is picked up automatically.
+
+If you only bind-mounted `oauth_creds.json` (the gemini-cli leftover),
+agy would ignore it and drop to interactive Google sign-in — the token
+file is the piece that actually authenticates.
 
 ## grok — bind-mount
 
@@ -158,7 +183,7 @@ Containers need egress out to auth domains and APIs:
 
 - claude: `api.anthropic.com`, `console.anthropic.com`
 - codex: `api.openai.com`, `auth.openai.com`, `chatgpt.com`
-- gemini: `generativelanguage.googleapis.com`,
+- agy: `antigravity.google`, `*.googleapis.com`,
   `oauth2.googleapis.com`, `accounts.google.com`
 - grok: `cli-chat-proxy.grok.com`, `auth.x.ai`, `accounts.x.ai`,
   `x.ai` (installer + binary downloads, build-time only)

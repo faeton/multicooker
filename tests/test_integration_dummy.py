@@ -57,7 +57,7 @@ def test_full_pipeline_on_dummy(tmp_path: Path):
     assert len(cook_dirs) == 1
     cook = cook_dirs[0]
 
-    # Replace template judges (claude/gemini) with dummy so we don't need creds.
+    # Replace template judges (claude/agy) with dummy so we don't need creds.
     import yaml
     brief_yaml = cook / "brief.yaml"
     cfg = yaml.safe_load(brief_yaml.read_text())

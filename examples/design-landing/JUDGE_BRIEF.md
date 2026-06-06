@@ -44,7 +44,7 @@ read").
 - Score every submission you receive, even if `index.html` is
   malformed (give 0s for what's missing and say so).
 - Use only the rubric dimensions above; don't invent new ones.
-- No mention of `claude` / `codex` / `gemini` / `grok` / specific
+- No mention of `claude` / `codex` / `agy` / `grok` / specific
   model names — the labels are `A`, `B`, `C`, …
 - Don't penalize different aesthetic choices against each other.
   A minimal monochrome page and a vibrant accent-color page can

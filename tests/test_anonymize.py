@@ -1,7 +1,7 @@
 """Tests for judge._anonymize.
 
 Anonymization is the only thing standing between participant flavor names
-(claude/codex/gemini) and the judge LLM. If a flavor name leaks into the
+(claude/codex/agy) and the judge LLM. If a flavor name leaks into the
 judge's input directory, the judge can guess identity and bias scores.
 
 Covered:
@@ -29,10 +29,10 @@ def _make_sealed(tmp_path: Path, participants: list[str]) -> Path:
 
 
 def test_mapping_covers_all_participants(tmp_path: Path):
-    sealed = _make_sealed(tmp_path, ["claude", "codex", "gemini"])
-    parts = [{"name": n, "flavor": n} for n in ["claude", "codex", "gemini"]]
+    sealed = _make_sealed(tmp_path, ["claude", "codex", "agy"])
+    parts = [{"name": n, "flavor": n} for n in ["claude", "codex", "agy"]]
     judge_in, mapping = _anonymize(parts, tmp_path / "judging", sealed)
-    assert set(mapping.values()) == {"claude", "codex", "gemini"}
+    assert set(mapping.values()) == {"claude", "codex", "agy"}
     assert all(letter.isupper() and len(letter) == 1 for letter in mapping)
 
 
@@ -42,7 +42,7 @@ def test_submission_dirs_are_letters_not_flavors(tmp_path: Path):
     judge_in, _ = _anonymize(parts, tmp_path / "judging", sealed)
     sub_names = sorted(d.name for d in (judge_in / "submissions").iterdir())
     for name in sub_names:
-        assert name not in {"claude", "codex", "gemini", "dummy"}, \
+        assert name not in {"claude", "codex", "agy", "dummy"}, \
             f"flavor name leaked into submissions: {name}"
     # All entries should be single uppercase letters.
     for name in sub_names:
@@ -50,13 +50,13 @@ def test_submission_dirs_are_letters_not_flavors(tmp_path: Path):
 
 
 def test_no_flavor_name_in_paths_or_filenames(tmp_path: Path):
-    sealed = _make_sealed(tmp_path, ["claude", "codex", "gemini"])
-    parts = [{"name": n, "flavor": n} for n in ["claude", "codex", "gemini"]]
+    sealed = _make_sealed(tmp_path, ["claude", "codex", "agy"])
+    parts = [{"name": n, "flavor": n} for n in ["claude", "codex", "agy"]]
     judge_in, _ = _anonymize(parts, tmp_path / "judging", sealed)
     leaks = []
     for path in judge_in.rglob("*"):
         rel = str(path.relative_to(judge_in))
-        for needle in ("claude", "codex", "gemini"):
+        for needle in ("claude", "codex", "agy"):
             if needle in rel:
                 leaks.append(rel)
     assert leaks == [], f"flavor name leaked into paths: {leaks}"

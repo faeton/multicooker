@@ -1,7 +1,7 @@
 # multicooker — what it is
 
 `multicooker` is a CLI tool that runs several LLM coding agents
-(`claude`, `codex`, `gemini`) on the **same task** at the same time,
+(`claude`, `codex`, `agy`) on the **same task** at the same time,
 each in its own docker container with its own subscription auth.
 When the agents finish, **other** LLM agents read the outputs blind
 (labeled `A` / `B` / `C`) and score them against a rubric you

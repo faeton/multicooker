@@ -125,7 +125,9 @@ _RL_PATTERNS = {
         re.compile(r"too many requests", re.I),
         re.compile(r"resets? in (\d+)\s*(hour|hours|h|minute|minutes|m)", re.I),
     ],
-    "gemini": [
+    "agy": [
+        # agy (Google Antigravity CLI) surfaces Google-style quota errors,
+        # same shapes gemini-cli used.
         *_QUOTA_EXHAUSTED_PATTERNS,
         re.compile(r"resource.*exhausted", re.I),
         *_RATE_LIMIT_ERROR_PATTERNS,

@@ -20,7 +20,7 @@ def _good() -> dict:
             {"name": "b", "flavor": "codex"},
         ],
         "judges": [
-            {"name": "j", "flavor": "gemini"},
+            {"name": "j", "flavor": "agy"},
         ],
         "rubric": {
             "scale": [0, 5],
@@ -63,12 +63,12 @@ def test_unknown_flavor_caught() -> None:
 
 def test_known_flavors_complete() -> None:
     # If someone adds a new flavor to creds.py, schema must follow.
-    assert KNOWN_FLAVORS == {"claude", "codex", "gemini", "grok", "dummy"}
+    assert KNOWN_FLAVORS == {"claude", "codex", "agy", "grok", "dummy"}
 
 
 def test_duplicate_participant_name() -> None:
     cfg = _good()
-    cfg["participants"].append({"name": "a", "flavor": "gemini"})
+    cfg["participants"].append({"name": "a", "flavor": "agy"})
     assert any("duplicate" in e for e in validate(cfg))
 
 
@@ -97,8 +97,8 @@ def test_empty_participants_rejected() -> None:
 
 def test_warning_on_judges_subset_of_participants() -> None:
     cfg = _good()
-    cfg["participants"] = [{"name": "a", "flavor": "gemini"}]
-    cfg["judges"] = [{"name": "j", "flavor": "gemini"}]
+    cfg["participants"] = [{"name": "a", "flavor": "agy"}]
+    cfg["judges"] = [{"name": "j", "flavor": "agy"}]
     assert validate(cfg) == []
     warnings = validate_warnings(cfg)
     assert any("anti-self-judging" in w or "anonymization" in w.lower()

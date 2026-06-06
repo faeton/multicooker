@@ -2,7 +2,7 @@
 
 ```bash
 # Scaffold a new task ("cook"). Name is auto-prefixed with today's date.
-multicooker new my-task --participants claude,codex,gemini
+multicooker new my-task --participants claude,codex,agy
 
 # Run all participants in parallel, each in its own docker sandbox.
 multicooker cook 260516-my-task

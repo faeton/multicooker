@@ -27,7 +27,7 @@ cooks/my-task/
 ├── participants/        # Dockerfile per flavor (inherited from templates/)
 │   ├── claude/Dockerfile
 │   ├── codex/Dockerfile
-│   ├── gemini/Dockerfile
+│   ├── agy/Dockerfile
 │   └── grok/Dockerfile
 └── judge/               # judge Dockerfile (per flavor)
 ```
@@ -60,11 +60,11 @@ judge_timeout_s: 900       # per judge
 participants:
   - {name: claude, flavor: claude}
   - {name: codex,  flavor: codex}
-  - {name: gemini, flavor: gemini}
+  - {name: agy,    flavor: agy}
 
 judges:
   - {name: claude-judge, flavor: claude}
-  - {name: gemini-judge, flavor: gemini}
+  - {name: agy-judge, flavor: agy}
 
 rubric:
   scale: [0, 5]

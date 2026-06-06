@@ -1,6 +1,6 @@
 # design-landing — same brief, four landings
 
-A design task: each participant (`claude`, `codex`, `gemini`,
+A design task: each participant (`claude`, `codex`, `agy`,
 `grok`) gets the same brief — "design a landing page for
 `multicooker`" — and each produces its own `out/index.html`. Two
 judges score the results blindly against a 5-dimension visual
@@ -17,7 +17,7 @@ the design picks.
 
 ## What you need
 
-- `claude`, `codex`, `gemini`, `grok` CLIs installed and logged in
+- `claude`, `codex`, `agy`, `grok` CLIs installed and logged in
   (or comment out flavors you don't have in `brief.yaml`).
 - Docker Desktop / colima running.
 - A few minutes — design tasks have a 10-minute per-participant
@@ -27,7 +27,7 @@ the design picks.
 
 ```bash
 # Copy this example into your cooks/ as a real cook
-multicooker new landing --participants claude,codex,gemini,grok
+multicooker new landing --participants claude,codex,agy,grok
 TASK=$(ls -d cooks/*-landing | tail -1)
 cp examples/design-landing/BRIEF.md       "$TASK/"
 cp examples/design-landing/JUDGE_BRIEF.md "$TASK/"

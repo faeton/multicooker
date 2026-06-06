@@ -14,7 +14,7 @@ def _seed_logs(tmp_path: Path) -> Path:
     (cook / "logs" / "b").mkdir(parents=True)
     (cook / "logs" / "b" / "codex.stdout.log").write_text("bob-line-1\n")
     (cook / "judging" / "_logs" / "judge1").mkdir(parents=True)
-    (cook / "judging" / "_logs" / "judge1" / "gemini.stdout.log").write_text("judge-line\n")
+    (cook / "judging" / "_logs" / "judge1" / "agy.stdout.log").write_text("judge-line\n")
     return cook
 
 

@@ -125,8 +125,8 @@ def collect_usage(cook_dir: Path, cell_kind: str, name: str,
         return _collect_claude(root).to_dict(flavor, root)
     if flavor == "codex":
         return _collect_codex(root).to_dict(flavor, root)
-    if flavor == "gemini":
-        return _collect_gemini(root).to_dict(flavor, root)
+    if flavor == "agy":
+        return _collect_agy(root).to_dict(flavor, root)
     return None
 
 
@@ -135,7 +135,7 @@ def _flavor_subdirs(flavor: str) -> list[str]:
         return ["projects"]
     if flavor == "codex":
         return ["sessions"]
-    if flavor == "gemini":
+    if flavor == "agy":
         return ["tmp", "history"]
     return []
 
@@ -189,29 +189,32 @@ def _collect_codex(root: Path) -> UsageTotals:
     return totals
 
 
-def _collect_gemini(root: Path) -> UsageTotals:
+# agy (Google Antigravity CLI) inherits gemini-cli's ~/.gemini layout. This
+# parser is carried over verbatim; agy's own antigravity-cli/ telemetry schema
+# may differ, in which case totals come back empty until the parser is extended.
+def _collect_agy(root: Path) -> UsageTotals:
     totals = UsageTotals()
     for base in (root / "tmp", root / "history"):
         for file in sorted([*base.rglob("*.json"), *base.rglob("*.jsonl")]):
             if file.suffix == ".jsonl":
                 for obj in _iter_jsonl_file(file):
-                    _add_gemini_object(totals, obj)
+                    _add_agy_object(totals, obj)
             else:
                 try:
-                    _add_gemini_object(totals, json.loads(file.read_text()))
+                    _add_agy_object(totals, json.loads(file.read_text()))
                 except (OSError, json.JSONDecodeError):
                     continue
     return totals
 
 
-def _add_gemini_object(totals: UsageTotals, obj: Any) -> None:
+def _add_agy_object(totals: UsageTotals, obj: Any) -> None:
     record = _record(obj)
     if not record:
         return
     messages = record.get("messages")
     if isinstance(messages, list):
         for message in messages:
-            _add_gemini_object(totals, message)
+            _add_agy_object(totals, message)
         return
     stats = (
         _record(record.get("stats"))
@@ -223,13 +226,13 @@ def _add_gemini_object(totals: UsageTotals, obj: Any) -> None:
             for model, payload in models.items():
                 tokens = _record(_record(payload).get("tokens"))
                 if tokens:
-                    totals.add(_gemini_tokens(tokens), model=model)
+                    totals.add(_agy_tokens(tokens), model=model)
             return
-        totals.add(_gemini_tokens(stats), model=_str(record.get("model")) or "unknown")
+        totals.add(_agy_tokens(stats), model=_str(record.get("model")) or "unknown")
         return
     tokens = _record(record.get("tokens"))
     if tokens:
-        totals.add(_gemini_tokens(tokens), model=_str(record.get("model")))
+        totals.add(_agy_tokens(tokens), model=_str(record.get("model")))
 
 
 def _iter_jsonl(root: Path):
@@ -272,7 +275,7 @@ def _subtract_usage(current: dict[str, Any],
     }
 
 
-def _gemini_tokens(tokens: dict[str, Any]) -> dict[str, Any]:
+def _agy_tokens(tokens: dict[str, Any]) -> dict[str, Any]:
     return {
         "input_tokens": _num(tokens, "input", "prompt", "input_tokens", "prompt_tokens"),
         "output_tokens": _num(tokens, "output", "candidates", "output_tokens",

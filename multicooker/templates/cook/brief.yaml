@@ -10,21 +10,21 @@ participants:
     flavor: claude
   - name: codex
     flavor: codex
-  - name: gemini
-    flavor: gemini
-    # timeout_s: 2400   # example: give gemini extra headroom
+  - name: agy
+    flavor: agy
+    # timeout_s: 2400   # example: give agy extra headroom
   - name: grok
     flavor: grok
   # Remove any flavor you don't have creds for (see docs/auth.md).
 
 judges:
-  # By default we use claude + gemini. Codex/grok would also work, but if any
+  # By default we use claude + agy. Codex/grok would also work, but if any
   # of these flavors also appear as participants the judge will skip itself
   # (anti-self-judging rule).
   - name: claude-judge
     flavor: claude
-  - name: gemini-judge
-    flavor: gemini
+  - name: agy-judge
+    flavor: agy
 
 # rubric_dimensions controls what JUDGE_BRIEF.md asks the judge to score.
 # Edit JUDGE_BRIEF.md if you add dimensions here.

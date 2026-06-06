@@ -142,14 +142,14 @@ def test_collect_codex_usage_from_total_delta(tmp_path: Path):
     assert usage["total_tokens"] == 30
 
 
-def test_collect_gemini_usage(tmp_path: Path):
+def test_collect_agy_usage(tmp_path: Path):
     cook = tmp_path / "cook"
-    path = cook / "work" / "gemini" / "usage" / "gemini" / "tmp" / "chat.json"
+    path = cook / "work" / "agy" / "usage" / "agy" / "tmp" / "chat.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({
         "stats": {
             "models": {
-                "gemini-2.5-pro": {
+                "agy-2.5-pro": {
                     "tokens": {
                         "input": 11,
                         "output": 13,
@@ -161,10 +161,10 @@ def test_collect_gemini_usage(tmp_path: Path):
         }
     }))
 
-    usage = metrics.collect_usage(cook, "participant", "gemini", "gemini")
+    usage = metrics.collect_usage(cook, "participant", "agy", "agy")
 
     assert usage is not None
     assert usage["total_tokens"] == 29
     assert usage["cache_read_input_tokens"] == 2
     assert usage["reasoning_output_tokens"] == 3
-    assert usage["models"] == ["gemini-2.5-pro"]
+    assert usage["models"] == ["agy-2.5-pro"]

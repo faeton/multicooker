@@ -5,7 +5,7 @@ judge_timeout_s: 900
 participants:
   - { name: claude, flavor: claude }
   - { name: codex,  flavor: codex }
-  - { name: gemini, flavor: gemini }
+  - { name: agy, flavor: agy }
   - { name: grok,   flavor: grok }
 
 judges:

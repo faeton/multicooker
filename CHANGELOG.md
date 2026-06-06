@@ -96,6 +96,24 @@ Notable changes to multicooker. Newest first.
   distinguished from a plain `non_zero_exit`.
 
 ### Changed
+- **Replaced the `gemini` flavor with `agy` (Google Antigravity CLI).**
+  gemini-cli is being retired; `agy` is its successor. The flavor is
+  renamed across the schema, CLI defaults, rate-limit patterns, metrics,
+  templates, and examples — `gemini` is no longer a valid flavor. The
+  base image installs the standalone agy binary
+  (`curl … antigravity.google/cli/install.sh | bash`, glibc/musl,
+  auto-update pinned off) instead of `npm i -g @google/gemini-cli`, and
+  the entrypoint runs `agy --print … --print-timeout 3600s
+  --dangerously-skip-permissions --add-dir /work`.
+- **agy auth: Keychain → token-file bridge.** Unlike gemini-cli, agy
+  does not read `~/.gemini/oauth_creds.json`. On macOS it stores its
+  OAuth session in the login Keychain (`zalando/go-keyring`, service
+  `gemini` / account `antigravity`, `go-keyring-base64:` wrapped); the
+  Linux build reads a plain file
+  `~/.gemini/antigravity-cli/antigravity-oauth-token`. `_snapshot_agy`
+  now extracts+decodes the Keychain blob (or copies the file on a Linux
+  host) into the per-cook `.auth/agy/`, so containers authenticate
+  headlessly with no interactive sign-in. See `docs/auth.md`.
 - **Sealed judge inbox no longer leaks identity.** `judging/_inbox/<p>/`
   now contains only the participant's `out/` plus a sanitized
   `meta.json` (`exit_class` + `round`); `PROMPT.txt`, `trace.json`,

@@ -64,10 +64,12 @@ mkdir -p "$OUT_DIR"
 #         ${MULTICOOKER_MODEL:+-c "model=$MULTICOOKER_MODEL"} \
 #         "$(cat $PROMPT_FILE)"
 #
-#   # gemini
-#   gemini --yolo \
-#          ${MULTICOOKER_MODEL:+--model "$MULTICOOKER_MODEL"} \
-#          -p "$(cat $PROMPT_FILE)"
+#   # agy (Google Antigravity CLI)
+#   agy --print "$(cat $PROMPT_FILE)" \
+#       --print-timeout 3600s \
+#       --dangerously-skip-permissions \
+#       --add-dir /work \
+#       ${MULTICOOKER_MODEL:+--model "$MULTICOOKER_MODEL"}
 
 echo "TODO: implement participant mode for this flavor" >&2
 exit 64

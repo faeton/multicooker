@@ -105,8 +105,8 @@ def main(argv: list[str] | None = None) -> int:
     pn = sub.add_parser("new", help="Scaffold a new cook (task) folder")
     pn.add_argument("name", help="Folder name under cooks/ (e.g. my-task)")
     pn.add_argument("--root", default="cooks", help="Parent folder (default: cooks/)")
-    pn.add_argument("--participants", default="claude,codex,gemini,grok",
-                    help="Comma-separated list (default: claude,codex,gemini,grok). "
+    pn.add_argument("--participants", default="claude,codex,agy,grok",
+                    help="Comma-separated list (default: claude,codex,agy,grok). "
                          "Each entry is a flavor; for multiple participants of "
                          "the same flavor use NAME=FLAVOR (e.g. claude-a=claude,claude-b=claude).")
 
@@ -145,7 +145,7 @@ def main(argv: list[str] | None = None) -> int:
     pj.add_argument("name")
     pj.add_argument("--root", default="cooks")
     pj.add_argument("--judges", default=None,
-                    help="Override judges (comma-separated, e.g. claude,gemini)")
+                    help="Override judges (comma-separated, e.g. claude,agy)")
     pj.add_argument("--profile", choices=profile_choices, default=None,
                     help=profile_help)
     pj.add_argument("--namespace", default=None, help=ns_help)

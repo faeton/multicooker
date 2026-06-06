@@ -32,13 +32,13 @@ claude --add-dir /work --print "prompt"
 claude --print "prompt" --add-dir /work
 ```
 
-Same happens with codex and gemini — check argv order against
+Same happens with codex and agy — check argv order against
 `reproxy/arena/coding-sandbox/host_runner.py:CLI_COMMANDS`.
 That's the reference.
 
 ## #3. exit-code = 0 ≠ all good
 
-All three CLIs (claude, codex, gemini) return 0 even when they've
+All three CLIs (claude, codex, agy) return 0 even when they've
 hit a rate-limit, because they "successfully reported the limit".
 If you go by exit-code, you'll mark a rate-limited cell as
 successful.
@@ -96,7 +96,7 @@ find cooks/ -maxdepth 1 -type d -mtime +30 -name '[!_]*' -print
 
 If you bring up three CLIs simultaneously — they all hit auth
 refresh at the same time. Keychain (for claude on the host) or
-OAuth refresh endpoints (for codex/gemini) under load can return
+OAuth refresh endpoints (for codex/agy) under load can return
 a transient error.
 
 **Rule:** 2-second stagger between launches. Inherited from

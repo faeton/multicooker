@@ -5,13 +5,13 @@ judge_timeout_s: 1800
 participants:
   - { name: claude, flavor: claude }
   - { name: codex,  flavor: codex }
-  - { name: gemini, flavor: gemini }
+  - { name: agy, flavor: agy }
   - { name: grok,   flavor: grok }
 
 judges:
   - { name: claude-judge, flavor: claude }
   - { name: codex-judge,  flavor: codex }
-  - { name: gemini-judge, flavor: gemini }
+  - { name: agy-judge, flavor: agy }
 
 rubric:
   scale: [0, 5]

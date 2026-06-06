@@ -1,6 +1,6 @@
 # multicooker — notes for agents
 
-multicooker runs several LLM agents (`claude` / `codex` / `gemini`
+multicooker runs several LLM agents (`claude` / `codex` / `agy`
 / `grok`) on **the same task** in parallel docker containers using
 their own subscription auth, then has **other** LLMs read the
 outputs blind and score them by a rubric you define. Output: a
@@ -42,8 +42,8 @@ multicooker new <name> --participants <list>   # → cooks/<YYMMDD-name>/
 ```
 
 `<list>` is comma-separated. Either `flavor` shorthand
-(`claude,codex,gemini,grok` → participants named after their
-flavor) or explicit (`alice=claude,bob=claude,codex,gemini`).
+(`claude,codex,agy,grok` → participants named after their
+flavor) or explicit (`alice=claude,bob=claude,codex,agy`).
 Per-participant model selection goes into `brief.yaml` (see below).
 
 Then fill in four pieces inside the new cook.
@@ -77,7 +77,7 @@ judge_timeout_s: 300
 participants:
   - { name: claude, flavor: claude }
   - { name: codex,  flavor: codex }
-  - { name: gemini, flavor: gemini, model: gemini-2.5-pro }   # model is optional
+  - { name: agy, flavor: agy, model: "Gemini 3.1 Pro (High)" }   # model is optional; see `agy models`
 
 judges:
   - { name: judge-claude, flavor: claude }   # see anti-self-judge below
@@ -131,7 +131,7 @@ strict mode doesn't leave a submission scored by no one:
   scored by no one (under `require_distinct_flavor`).
 - With one participant flavor, you cannot judge it with that
   flavor's judge — pick a different judge flavor.
-- With several participant flavors (e.g. claude/codex/gemini/grok),
+- With several participant flavors (e.g. claude/codex/agy/grok),
   two judges of different flavors is typically enough: every
   submission ends up scored by at least one non-self judge
   (submissions of the judge flavors get scored by the other judge;

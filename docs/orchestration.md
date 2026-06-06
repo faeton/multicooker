@@ -11,13 +11,13 @@ project so networks and volumes stay isolated between tasks.
    ┌───────────┬──────┴────┬───────────┬───────────┬───────────┐
    ▼           ▼           ▼           ▼           ▼           ▼
 ┌──────┐   ┌──────┐    ┌──────┐    ┌──────┐    ┌──────┐    ┌──────┐
-│claude│   │codex │    │gemini│    │ grok │    │judge1│    │judge2│
+│claude│   │codex │    │ agy  │    │ grok │    │judge1│    │judge2│
 └──┬───┘   └──┬───┘    └──┬───┘    └──┬───┘    └──┬───┘    └──┬───┘
    │          │           │           │           │           │
    ▼          ▼           ▼           ▼           ▼           ▼
  net-      net-         net-        net-       net-        net-
  part-     part-        part-       part-      judge-      judge-
- claude    codex        gemini      grok       <name>      <name>
+ claude    codex         agy        grok       <name>      <name>
    │          │           │           │           │           │
    └──────────┴───────────┴───────────┴───────────┴───────────┘
                           │
@@ -81,8 +81,9 @@ claude --print "$PROMPT" --dangerously-skip-permissions --add-dir /work
 codex exec --cd /work --skip-git-repo-check \
       --dangerously-bypass-approvals-and-sandbox "$PROMPT"
 
-# gemini
-gemini --yolo -p "$PROMPT"
+# agy (Google Antigravity CLI)
+agy --print "$PROMPT" --print-timeout 3600s \
+    --dangerously-skip-permissions --add-dir /work
 
 # grok
 grok -p "$PROMPT" --always-approve

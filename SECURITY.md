@@ -2,7 +2,7 @@
 
 ## Scope
 
-multicooker runs LLM agents (`claude`, `codex`, `gemini`) inside Docker
+multicooker runs LLM agents (`claude`, `codex`, `agy`) inside Docker
 containers with `--dangerously-skip-permissions` / `--yolo` /
 `--dangerously-bypass-…` flags. These flags **are intentional** — the
 container is the sandbox. The threat model is documented in

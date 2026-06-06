@@ -87,7 +87,7 @@ def test_codex_rate_limit_reached_message():
     assert "Rate limit reached" in ev
 
 
-@pytest.mark.parametrize("flavor", ["codex", "gemini", "grok"])
+@pytest.mark.parametrize("flavor", ["codex", "agy", "grok"])
 def test_no_false_positive_on_proposal_text(flavor):
     text = (
         '+  "state": "orange",\n'
@@ -101,7 +101,7 @@ def test_no_false_positive_on_proposal_text(flavor):
     assert ev == ""
 
 
-@pytest.mark.parametrize("flavor", ["codex", "gemini", "grok"])
+@pytest.mark.parametrize("flavor", ["codex", "agy", "grok"])
 def test_no_false_positive_on_rate_limit_design_prose(flavor):
     text = (
         "Identified strengths in Docker-based isolation and blind judging, "
@@ -114,7 +114,7 @@ def test_no_false_positive_on_rate_limit_design_prose(flavor):
     assert ev == ""
 
 
-@pytest.mark.parametrize("flavor", ["codex", "gemini", "grok"])
+@pytest.mark.parametrize("flavor", ["codex", "agy", "grok"])
 def test_no_false_positive_on_patch_payload_quota_examples(flavor):
     text = (
         "+- Adapter exit codes and stderr patterns: rate limit, "
@@ -127,11 +127,11 @@ def test_no_false_positive_on_patch_payload_quota_examples(flavor):
     assert ev == ""
 
 
-# ---- gemini ---------------------------------------------------------------
+# ---- agy ---------------------------------------------------------------
 
-def test_gemini_quota_exceeded():
+def test_agy_quota_exceeded():
     text = "Resource quota exceeded for project xyz."
-    rl, _, _ = detect_rate_limit("gemini", text)
+    rl, _, _ = detect_rate_limit("agy", text)
     assert rl is True
 
 
@@ -141,16 +141,16 @@ def test_grok_quota_exhausted():
     assert rl is True
 
 
-def test_gemini_retry_after():
+def test_agy_retry_after():
     text = "Rate limited. retry-after: 120"
-    rl, retry, _ = detect_rate_limit("gemini", text)
+    rl, retry, _ = detect_rate_limit("agy", text)
     assert rl is True
     assert retry == 120
 
 
-def test_gemini_daily_limit():
+def test_agy_daily_limit():
     text = "You have reached your daily limit for the free tier."
-    rl, _, _ = detect_rate_limit("gemini", text)
+    rl, _, _ = detect_rate_limit("agy", text)
     assert rl is True
 
 
@@ -171,7 +171,7 @@ def test_empty_text():
     assert ev == ""
 
 
-@pytest.mark.parametrize("flavor", ["claude", "codex", "gemini"])
+@pytest.mark.parametrize("flavor", ["claude", "codex", "agy"])
 def test_evidence_includes_context(flavor):
     text = "lots of preamble " * 10 + "rate limit hit here" + " trailing context " * 10
     rl, _, ev = detect_rate_limit(flavor, text)

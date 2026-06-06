@@ -21,7 +21,7 @@ def _make_cook(tmp_path: Path, cfg_extra: dict) -> Path:
         ],
         "judges": [
             {"name": "judge-claude", "flavor": "claude"},
-            {"name": "judge-gemini", "flavor": "gemini"},
+            {"name": "judge-agy", "flavor": "agy"},
         ],
         "rubric": {"scale": [0, 5],
                    "dimensions": [{"id": "correctness", "weight": 100}]},
@@ -44,7 +44,7 @@ def test_summary_written_with_ranking(tmp_path: Path):
         "alice": {"dimensions": {"correctness": 5}},
         "bob": {"dimensions": {"correctness": 3}},
     })
-    _put_judge(cook, "judge-gemini", {
+    _put_judge(cook, "judge-agy", {
         "alice": {"dimensions": {"correctness": 4}},
         "bob": {"dimensions": {"correctness": 4}},
     })
@@ -77,7 +77,7 @@ def test_strict_policy_excludes_self_flavor(tmp_path: Path):
         "alice": {"dimensions": {"correctness": 5}},
         "bob": {"dimensions": {"correctness": 1}},
     })
-    _put_judge(cook, "judge-gemini", {
+    _put_judge(cook, "judge-agy", {
         "alice": {"dimensions": {"correctness": 2}},
         "bob": {"dimensions": {"correctness": 2}},
     })
@@ -87,7 +87,7 @@ def test_strict_policy_excludes_self_flavor(tmp_path: Path):
     assert {"judge": "judge-claude", "participant": "alice", "flavor": "claude"} \
         in summary["excluded_pairs"]
     ranks = {r["participant"]: r for r in summary["ranking"]}
-    # alice scored only by judge-gemini (claude judge excluded).
+    # alice scored only by judge-agy (claude judge excluded).
     assert ranks["alice"]["num_judges"] == 1
     # bob scored by both (neither judge shares codex flavor).
     assert ranks["bob"]["num_judges"] == 2
@@ -95,7 +95,7 @@ def test_strict_policy_excludes_self_flavor(tmp_path: Path):
 
 def test_latest_round_metrics_from_refine(tmp_path: Path):
     cook = _make_cook(tmp_path, {})
-    _put_judge(cook, "judge-gemini", {
+    _put_judge(cook, "judge-agy", {
         "alice": {"dimensions": {"correctness": 5}},
         "bob": {"dimensions": {"correctness": 3}},
     })
@@ -134,7 +134,7 @@ def test_no_scores_still_writes_summary(tmp_path: Path):
 
 def test_stale_judge_folder_ignored(tmp_path: Path):
     cook = _make_cook(tmp_path, {})
-    _put_judge(cook, "judge-gemini", {
+    _put_judge(cook, "judge-agy", {
         "alice": {"dimensions": {"correctness": 4}},
         "bob": {"dimensions": {"correctness": 4}},
     })
@@ -146,4 +146,4 @@ def test_stale_judge_folder_ignored(tmp_path: Path):
     rc = report("260101-test", tmp_path)
     assert rc == 0
     summary = json.loads((cook / "summary.json").read_text())
-    assert summary["judges_used"] == ["judge-gemini"]
+    assert summary["judges_used"] == ["judge-agy"]

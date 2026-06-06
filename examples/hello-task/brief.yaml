@@ -4,7 +4,7 @@ judge_timeout_s: 60
 
 # Sanitized example: participants and judges all use the `dummy` flavor,
 # which runs locally in alpine without any LLM credentials. Replace with
-# claude/codex/gemini/grok when you want a real bake-off.
+# claude/codex/agy/grok when you want a real bake-off.
 participants:
   - { name: a, flavor: dummy }
   - { name: b, flavor: dummy }

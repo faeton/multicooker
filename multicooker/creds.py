@@ -4,11 +4,16 @@ Why: docker-mode runs CLIs in Linux containers. Each CLI looks for creds
 in a known on-disk location:
 
   - codex:  ~/.codex/auth.json                   (plain file, OS-agnostic)
-  - gemini: ~/.gemini/oauth_creds.json           (plain file, OS-agnostic)
+  - agy:    macOS Keychain (go-keyring, svc 'gemini'/acct 'antigravity'),
+            or ~/.gemini/antigravity-cli/antigravity-oauth-token on Linux
   - claude: ~/.claude/.credentials.json          (Linux), or macOS Keychain
   - grok:   ~/.grok/auth.json                    (plain file, OS-agnostic)
 
-Approach: for each cook, build cooks/<task>/.auth/{claude,codex,gemini}/
+agy (Google Antigravity CLI, successor to gemini-cli) keeps its session in
+the OS keyring on macOS but the Linux build reads a plain token file, so its
+snapshot extracts+decodes the Keychain blob into that file. See _snapshot_agy.
+
+Approach: for each cook, build cooks/<task>/.auth/{claude,codex,agy}/
 with the right files and mode 0600, then bind-mount RO into containers.
 We re-snapshot at every cook so token rotations on the host are picked up.
 
@@ -19,6 +24,7 @@ as a JSON string in the SAME shape Linux expects. We extract via
 
 from __future__ import annotations
 
+import base64
 import json
 import shutil
 import subprocess
@@ -27,6 +33,16 @@ from pathlib import Path
 
 
 KEYCHAIN_SERVICE = "Claude Code-credentials"
+
+# agy (Google Antigravity CLI) stores its OAuth session in the macOS login
+# Keychain via zalando/go-keyring, under this service/account, with the value
+# wrapped as "go-keyring-base64:<base64(json)>". The Linux agy binary instead
+# reads the *decoded* JSON from a plain file (see AGY_TOKEN_RELPATH), so on a
+# macOS host we extract+unwrap; on a Linux host we copy that file directly.
+AGY_KEYCHAIN_SERVICE = "gemini"
+AGY_KEYCHAIN_ACCOUNT = "antigravity"
+AGY_GOKEYRING_B64_PREFIX = "go-keyring-base64:"
+AGY_TOKEN_RELPATH = Path("antigravity-cli") / "antigravity-oauth-token"
 
 
 class CredsError(RuntimeError):
@@ -45,28 +61,74 @@ def _snapshot_codex(into: Path) -> None:
     dst.chmod(0o600)
 
 
-def _snapshot_gemini(into: Path) -> None:
-    """Snapshot gemini config dir (oauth_creds.json + settings.json + ids).
+def _read_agy_token() -> bytes:
+    """Return the decoded antigravity OAuth token JSON the Linux binary reads.
 
-    gemini-cli needs settings.json with `security.auth.selectedType:
-    "oauth-personal"` plus oauth_creds.json. Bind-mounting only the creds
-    file makes the container fall back to demanding GEMINI_API_KEY.
+    The container's (Linux) agy reads ONLY the on-disk token file; it never
+    touches a keyring. So we materialize that file's contents from whichever
+    host store holds the live session:
+      - Linux host: agy already keeps it at the same path — copy verbatim.
+      - macOS host: it's in the login Keychain, base64-wrapped — unwrap it.
+    """
+    linux_token = Path.home() / ".gemini" / AGY_TOKEN_RELPATH
+    if linux_token.exists():
+        return linux_token.read_bytes()
+
+    if sys.platform == "darwin":
+        try:
+            blob = subprocess.check_output(
+                ["security", "find-generic-password",
+                 "-s", AGY_KEYCHAIN_SERVICE, "-a", AGY_KEYCHAIN_ACCOUNT, "-w"],
+                stderr=subprocess.PIPE,
+            )
+        except FileNotFoundError as e:
+            raise CredsError("`security` tool not on PATH (need macOS host)") from e
+        except subprocess.CalledProcessError as e:
+            raise CredsError(
+                f"agy creds not found in Keychain (service={AGY_KEYCHAIN_SERVICE!r}, "
+                f"account={AGY_KEYCHAIN_ACCOUNT!r}). Run `agy` once on the host to "
+                f"log in.\nstderr: {e.stderr.decode(errors='replace')}"
+            ) from e
+        text = blob.rstrip(b"\n").decode("utf-8", errors="replace")
+        if text.startswith(AGY_GOKEYRING_B64_PREFIX):
+            return base64.b64decode(text[len(AGY_GOKEYRING_B64_PREFIX):])
+        # Older/newer agy may store the raw JSON without the wrapper.
+        return blob.rstrip(b"\n")
+
+    raise CredsError(
+        f"agy creds missing: no {linux_token} and host is not macOS. "
+        f"Run `agy` once on the host to log in (Google Sign-In)."
+    )
+
+
+def _snapshot_agy(into: Path) -> None:
+    """Snapshot agy (Google Antigravity CLI) creds for the container.
+
+    Two pieces go into .auth/agy/ (mounted at /home/node/.gemini/):
+      1. small ~/.gemini account-config files (identity + settings);
+      2. antigravity-cli/antigravity-oauth-token — the OAuth token the Linux
+         agy binary actually reads (extracted from the host Keychain on macOS,
+         or copied from the host file on Linux). Without (2) the container
+         drops to interactive Google sign-in.
     """
     src = Path.home() / ".gemini"
-    if not (src / "oauth_creds.json").exists():
-        raise CredsError(
-            f"gemini creds missing at {src}/oauth_creds.json. "
-            f"Run `gemini` once on the host to log in."
-        )
-    dst = into / "gemini"
+    dst = into / "agy"
     dst.mkdir(parents=True, exist_ok=True)
-    # Copy the small config files; skip history/tmp/state that have no auth bearing.
+
+    # (1) best-effort account-config files (skip history/tmp/state).
     for f in ("oauth_creds.json", "settings.json", "google_accounts.json",
               "installation_id", "trustedFolders.json"):
         sf = src / f
         if sf.exists() and sf.is_file():
             shutil.copy2(sf, dst / f)
             (dst / f).chmod(0o600)
+
+    # (2) the token file the container reads — raises CredsError if absent.
+    token = _read_agy_token()
+    token_path = dst / AGY_TOKEN_RELPATH
+    token_path.parent.mkdir(parents=True, exist_ok=True)
+    token_path.write_bytes(token)
+    token_path.chmod(0o600)
 
 
 def _snapshot_grok(into: Path) -> None:
@@ -146,8 +208,8 @@ def snapshot(cook_dir: Path, flavors: list[str]) -> Path:
         try:
             if f == "codex":
                 _snapshot_codex(auth_root)
-            elif f == "gemini":
-                _snapshot_gemini(auth_root)
+            elif f == "agy":
+                _snapshot_agy(auth_root)
             elif f == "grok":
                 _snapshot_grok(auth_root)
             elif f == "claude":

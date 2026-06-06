@@ -10,7 +10,7 @@
 #    Cook image rebuilds the world every time. Fine for ~50MB images;
 #    painful for anything larger.
 #
-# B. Shared base (good for npm-installed tooling — claude/codex/gemini
+# B. Shared base (good for heavier tooling — claude/codex/agy/grok
 #    all use this):
 #    1. Create templates/base/<your-flavor>/Dockerfile that does the heavy
 #       install (apt, npm i -g, pip install).
@@ -26,14 +26,15 @@ FROM mc-base-yourflavor:latest
 
 # Permission-bypass argv goes in entrypoint.sh, not in CMD. CMD/ENTRYPOINT
 # differs per CLI: claude wants --print + --add-dir, codex uses
-# `codex exec`, gemini uses --yolo. See entrypoint.sh.example.
+# `codex exec`, agy uses --print + --print-timeout. See entrypoint.sh.example.
 COPY entrypoint.sh /usr/local/bin/mc-entrypoint
 RUN chmod +x /usr/local/bin/mc-entrypoint
 
 # Run as the non-root user provided by your base image. Container = sandbox,
 # but defense-in-depth still asks for non-root.
-# TODO: match the user your base image creates (claude/codex/gemini bases
-# create `node` from node:22-slim; alpine bases typically `mv` or `agent`).
+# TODO: match the user your base image creates (claude/codex bases create
+# `node` from node:22-slim; the agy base creates `node` on debian-slim;
+# alpine bases typically `mv` or `agent`).
 USER node
 WORKDIR /work
 ENV HOME=/home/node

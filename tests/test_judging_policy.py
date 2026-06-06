@@ -15,7 +15,7 @@ PARTICIPANTS = [
 ]
 JUDGES = [
     {"name": "judge-claude", "flavor": "claude"},
-    {"name": "judge-gemini", "flavor": "gemini"},
+    {"name": "judge-agy", "flavor": "agy"},
 ]
 
 
