@@ -9,3 +9,13 @@ dist/
 
 # Live cooks live here. Templates are tracked, runs are not.
 cooks/
+
+# codanna code-intelligence — personal dev tooling, not part of the repo
+# (index/embeddings, project id, ignore rules, and the MCP server wiring).
+.codanna/
+.fastembed_cache
+.codannaignore
+.mcp.json
+
+# Local Claude Code workspace (worktrees, local skills).
+.claude/
