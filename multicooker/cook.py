@@ -300,6 +300,25 @@ def _run_participant(cook_dir: Path, project: str, participant: dict,
     print(f"[{phase}] {name}: {status} (exit={res.exit_code}, {res.duration_s:.1f}s)", flush=True)
 
 
+def _print_usage_summary(tag: str, results: list[dict],
+                         totals: dict | None = None) -> None:
+    """Print per-cell token usage plus a grand total, skipping cells with none."""
+    lines = []
+    for r in results:
+        usage = r.get("usage")
+        if usage:
+            lines.append(f"  {r.get('name', '?'):16} {metrics.summarize_usage(usage)}")
+    if not lines:
+        return
+    print(f"[{tag}] tokens:", flush=True)
+    for line in lines:
+        print(line, flush=True)
+    if totals is None:
+        totals = metrics.sum_usage(r.get("usage") for r in results)
+    if totals is not None and len(lines) > 1:
+        print(f"  {'total':16} {metrics.summarize_usage(totals)}", flush=True)
+
+
 def _snapshot_creds_or_die(cook_dir: Path, flavors: list[str]) -> int | None:
     """Try to snapshot creds. On failure, print a friendly message and return
     a non-None exit code so the caller can `return` it."""
@@ -443,12 +462,17 @@ def cook(name: str, root: Path,
     except Exception as e:                                                  # noqa: BLE001
         print(f"[cook] teardown warning: {e}", flush=True)
 
+    ran = [results[p["name"]] for p in participants if p["name"] in results]
+    usage_totals = metrics.sum_usage(r.get("usage") for r in ran)
     summary = cook_dir / "RUN_RESULT.json"
-    state.write_json_atomic(summary, {
+    run_result = {
         "finished_at": datetime.now(timezone.utc).isoformat(),
         "round": 1,
-        "participants": [results[p["name"]] for p in participants if p["name"] in results],
-    })
+        "participants": ran,
+    }
+    if usage_totals is not None:
+        run_result["usage_totals"] = usage_totals
+    state.write_json_atomic(summary, run_result)
     # finalize honors a cancel marker written by a concurrent `cancel` process
     # (atomically, so sealed never clobbers cancelled).
     final_state = state.finalize(cook_dir, state.SEALED)
@@ -458,6 +482,7 @@ def cook(name: str, root: Path,
         return 130
     state.append_event(cook_dir, "seal.finished", phase="cook")
     print(f"\n[cook] done. summary at {summary}")
+    _print_usage_summary("cook", ran, usage_totals)
     print(f"[cook] sealed work trees at {cook_dir}/judging/_inbox/")
     print(f"[cook] next: multicooker judge {name}")
 

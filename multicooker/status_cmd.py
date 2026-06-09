@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from . import state
+from . import metrics, state
 from .report import _latest_run_result
 
 
@@ -68,6 +68,8 @@ def status_cmd(name: str, root: Path, as_json: bool = False) -> int:
         print(f"error: no status.json and no result files at {cook_dir}", flush=True)
         return 2
 
+    _attach_live_usage(cook_dir, st)
+
     if as_json:
         print(json.dumps(st, indent=2))
         return 0
@@ -76,5 +78,36 @@ def status_cmd(name: str, root: Path, as_json: bool = False) -> int:
           f"state={st.get('state')}  round={st.get('round')}")
     cells = st.get("cells", {})
     for cname, c in cells.items():
-        print(f"  {c.get('role', '?'):11} {cname:16} {c.get('state', '?')}")
+        line = f"  {c.get('role', '?'):11} {cname:16} {c.get('state', '?'):14}"
+        usage = c.get("usage")
+        if usage:
+            line += f" {metrics.summarize_usage(usage)}"
+        print(line.rstrip())
+    totals = st.get("usage_totals")
+    if totals:
+        print(f"  {'total':11} {'':16} {'':14} {metrics.summarize_usage(totals)}")
     return 0
+
+
+def _attach_live_usage(cook_dir: Path, st: dict) -> None:
+    """Collect each cell's usage live (works mid-run) and add per-cell totals.
+
+    Mutates `st`: every participant/judge cell with recorded tokens gains a
+    `usage` dict, and the snapshot gains a `usage_totals` aggregate. Read-only
+    against the cook — it only parses the mounted usage dirs.
+    """
+    cells = st.get("cells", {})
+    if not isinstance(cells, dict):
+        return
+    collected = []
+    for name, cell in cells.items():
+        if not isinstance(cell, dict):
+            continue
+        usage = metrics.collect_cell_usage(
+            cook_dir, cell.get("role"), name, cell.get("flavor"))
+        if usage is not None:
+            cell["usage"] = usage
+            collected.append(usage)
+    totals = metrics.sum_usage(collected)
+    if totals is not None:
+        st["usage_totals"] = totals

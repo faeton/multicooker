@@ -14,7 +14,7 @@ from pathlib import Path
 
 import yaml
 
-from . import state
+from . import metrics, state
 from .judging_policy import excluded_pairs, judging_policy
 
 
@@ -38,6 +38,25 @@ def _cost_of(entry: dict):
         return None
     cost = usage.get("cost_usd")
     return float(cost) if isinstance(cost, (int, float)) else None
+
+
+def _usage_totals(rr_by_name: dict, jr: dict) -> dict | None:
+    """Token totals split participants/judges/all, or None when nothing recorded.
+
+    Each sub-key is only present when that group had usage, and the whole block
+    is dropped when neither did — so summary.json never carries null totals.
+    """
+    participants = metrics.sum_usage(e.get("usage") for e in rr_by_name.values())
+    judges = metrics.sum_usage(e.get("usage") for e in jr.get("judges", []))
+    grand = metrics.sum_usage([participants, judges])
+    if grand is None:
+        return None
+    block = {"all": grand}
+    if participants is not None:
+        block["participants"] = participants
+    if judges is not None:
+        block["judges"] = judges
+    return block
 
 
 def _fmt_tokens(entry: dict) -> str:
@@ -161,8 +180,10 @@ def report(name: str, root: Path) -> int:
         # Still emit a contract summary.json so an orchestrator reading it
         # unconditionally sees a valid-but-unjudged cook instead of a missing
         # file. Empty ranking signals "no scores yet".
-        round_num, _ = _latest_run_result(cook_dir)
-        state.write_json_atomic(state.summary_path(cook_dir), {
+        round_num, rr = _latest_run_result(cook_dir)
+        jr = _load_json(cook_dir / "JUDGE_RESULT.json") or {}
+        rr_by_name = {p["name"]: p for p in rr.get("participants", [])}
+        no_scores_summary = {
             "schema_version": 1,
             "cook": cook_dir.name,
             "round": round_num,
@@ -171,11 +192,15 @@ def report(name: str, root: Path) -> int:
             "judges_used": [],
             "ranking": [],
             "per_judge": {},
-            "judge_run": (_load_json(cook_dir / "JUDGE_RESULT.json") or {}).get("judges", []),
+            "judge_run": jr.get("judges", []),
             "excluded_pairs": [],
             "artifacts": {},
             "status": "no_scores",
-        })
+        }
+        usage_totals = _usage_totals(rr_by_name, jr)
+        if usage_totals is not None:
+            no_scores_summary["usage_totals"] = usage_totals
+        state.write_json_atomic(state.summary_path(cook_dir), no_scores_summary)
         return 1
 
     # Aggregate: per participant, mean normalized score across judges, dropping
@@ -225,6 +250,15 @@ def report(name: str, root: Path) -> int:
             f"{_fmt_duration(run_entry.get('duration_s'))} | "
             f"{_fmt_tokens(run_entry)} | {_fmt_cost(run_entry)} |"
         )
+    # Sum over every participant that ran (rr_by_name), matching summary.json —
+    # not just the ranked subset, so the Total reflects true token spend.
+    part_totals = metrics.sum_usage(e.get("usage") for e in rr_by_name.values())
+    if part_totals is not None:
+        wrap = {"usage": part_totals}
+        out.append(
+            f"| | **Total** | | | | | **{_fmt_tokens(wrap)}** | "
+            f"**{_fmt_cost(wrap)}** |"
+        )
     if excluded_recorded:
         out.append("")
         out.append("Excluded (same-flavor judge/submission pairs, per policy "
@@ -242,6 +276,14 @@ def report(name: str, root: Path) -> int:
                 f"| {entry.get('name', '?')} | {entry.get('status', '?')} | "
                 f"{_fmt_duration(entry.get('duration_s'))} | "
                 f"{_fmt_tokens(entry)} | {_fmt_cost(entry)} |"
+            )
+        judge_totals = metrics.sum_usage(
+            e.get("usage") for e in jr.get("judges", []))
+        if judge_totals is not None:
+            wrap = {"usage": judge_totals}
+            out.append(
+                f"| **Total** | | | **{_fmt_tokens(wrap)}** | "
+                f"**{_fmt_cost(wrap)}** |"
             )
     out.append("")
     out.append("## Per-judge breakdown")
@@ -335,4 +377,7 @@ def _write_summary(cook_dir: Path, *, round_num: int, policy: str,
         "excluded_pairs": excluded_recorded,
         "artifacts": {"leaderboard": "leaderboard.md", "manifest": "artifacts.json"},
     }
+    usage_totals = _usage_totals(rr_by_name, jr)
+    if usage_totals is not None:
+        summary["usage_totals"] = usage_totals
     state.write_json_atomic(state.summary_path(cook_dir), summary)

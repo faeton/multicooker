@@ -20,8 +20,9 @@ from pathlib import Path
 
 import yaml
 
-from . import base_images, compose_render, compose_runner, metrics
+from . import base_images, compose_render, compose_runner, metrics, state
 from .cook import (
+    _print_usage_summary,
     _seal_for_judging,
     _setup_worktree,
     _snapshot_creds_or_die,
@@ -373,6 +374,11 @@ def chef(
     metrics.reset_usage_dir(cook_dir, "participant", chef_name, flavor)
     log_dir = cook_dir / "logs" / chef_name
     started_at = datetime.now(timezone.utc).isoformat()
+    # Merge a chef cell into the cook's status.json (created if absent) so
+    # `multicooker status` surfaces the chef run with live token stats. We only
+    # touch the cell — the top-level phase/state stay as the cook left them.
+    state.set_cell(cook_dir, chef_name, role="participant", flavor=flavor,
+                   state=state.RUNNING, started_at=started_at)
     print(f"[chef] launching {service} (timeout {eff_timeout}s)", flush=True)
     try:
         res: RunResult = compose_runner.run_cell(
@@ -386,6 +392,8 @@ def chef(
     except Exception as e:                                                   # noqa: BLE001
         _write_trace(cook_dir, participant, mode="chef", round_num=None,
                      started_at=started_at, res=None, status="error", error=str(e))
+        state.set_cell(cook_dir, chef_name, state=state.START_FAILED,
+                       finished_at=state.now_iso(), exit_class=state.START_FAILED)
         print(f"[chef] {chef_name}: FAILED to launch: {e}", flush=True)
         return 1
 
@@ -398,6 +406,8 @@ def chef(
     usage = metrics.collect_usage(cook_dir, "participant", chef_name, flavor)
     _write_trace(cook_dir, participant, mode="chef", round_num=None,
                  started_at=started_at, res=res, status=status, usage=usage)
+    state.set_cell(cook_dir, chef_name, state=status, finished_at=state.now_iso(),
+                   exit_class=status, duration_s=round(res.duration_s, 1))
     _seal_for_judging(cook_dir, chef_name)
 
     result = {
@@ -421,6 +431,7 @@ def chef(
         print(f"[chef] teardown warning: {e}", flush=True)
 
     print(f"[chef] {chef_name}: {status} (exit={res.exit_code}, {res.duration_s:.1f}s)")
+    _print_usage_summary("chef", [{"name": chef_name, "usage": usage}])
     print(f"[chef] sealed chef work tree at {cook_dir}/judging/_inbox/{chef_name}/")
     print(f"[chef] next: multicooker rejudge {name}")
     return 0 if status == "ok" else 1

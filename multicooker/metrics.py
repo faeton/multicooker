@@ -130,6 +130,100 @@ def collect_usage(cook_dir: Path, cell_kind: str, name: str,
     return None
 
 
+def collect_cell_usage(cook_dir: Path, role: str, name: str,
+                       flavor: str | None) -> dict[str, Any] | None:
+    """Live usage for a status cell, keyed by its `role`/`flavor`.
+
+    Safe to call mid-run: participant and judge CLIs append to the mounted
+    usage dirs as they work, so this reflects progress, not just the final
+    tally. Returns None for unknown roles, missing flavors, or empty dirs.
+    """
+    if role not in ("participant", "judge") or not flavor:
+        return None
+    try:
+        return collect_usage(cook_dir, role, name, flavor)
+    except Exception:  # noqa: BLE001 — a status read must never crash the command
+        return None
+
+
+# Per-cell usage dicts (from collect_usage) aggregate additively on these keys.
+_SUM_KEYS = (
+    "events",
+    "input_tokens",
+    "output_tokens",
+    "cache_creation_input_tokens",
+    "cache_read_input_tokens",
+    "cached_input_tokens",
+    "reasoning_output_tokens",
+    "tool_tokens",
+    "total_tokens",
+)
+
+
+def sum_usage(usages: Any) -> dict[str, Any] | None:
+    """Aggregate several collect_usage() dicts into one totals dict.
+
+    Returns None when no input dict carried data, so callers can treat the
+    'nothing recorded' case the same as a cell with no usage at all.
+    """
+    acc = {key: 0 for key in _SUM_KEYS}
+    cost = 0.0
+    models: set[str] = set()
+    seen = False
+    for usage in usages:
+        if not isinstance(usage, dict):
+            continue
+        for key in _SUM_KEYS:
+            value = usage.get(key)
+            if isinstance(value, (int, float)) and not isinstance(value, bool) and value:
+                acc[key] += int(value)
+                seen = True
+        c = usage.get("cost_usd")
+        if isinstance(c, (int, float)) and not isinstance(c, bool) and c:
+            cost += float(c)
+            seen = True
+        cell_models = usage.get("models")
+        if isinstance(cell_models, (list, tuple, set)):
+            for model in cell_models:
+                models.add(str(model))
+                seen = True
+    if not seen:
+        return None
+    if cost:
+        acc["cost_usd"] = round(cost, 6)
+    if models:
+        acc["models"] = sorted(models)
+    return acc
+
+
+def summarize_usage(usage: Any) -> str:
+    """One-line human summary, e.g. '1,234 tok (in 1,000, out 200, cache 34) $0.0123'."""
+    if not isinstance(usage, dict):
+        return "n/a"
+    total = usage.get("total_tokens")
+    total = int(total) if isinstance(total, (int, float)) and not isinstance(total, bool) else 0
+    parts = [f"{total:,} tok"]
+    detail = []
+    for label, key in (("in", "input_tokens"), ("out", "output_tokens")):
+        value = usage.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and value:
+            detail.append(f"{label} {int(value):,}")
+    cache = 0
+    for key in ("cache_read_input_tokens", "cache_creation_input_tokens",
+                "cached_input_tokens"):
+        value = usage.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            cache += int(value)
+    if cache:
+        detail.append(f"cache {cache:,}")
+    if detail:
+        parts.append("(" + ", ".join(detail) + ")")
+    cost = usage.get("cost_usd")
+    if isinstance(cost, (int, float)) and not isinstance(cost, bool) and cost:
+        parts.append(f"${float(cost):.4f}")
+    return " ".join(parts)
+
+
 def _flavor_subdirs(flavor: str) -> list[str]:
     if flavor == "claude":
         return ["projects"]
