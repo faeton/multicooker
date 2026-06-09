@@ -19,8 +19,6 @@ competitor. See [`docs/add-flavor.md`](docs/add-flavor.md#composite-flavors-tria
 > «multicooker»: one task, several dishes cook in parallel in
 > their own pots; you compare what came out of each.
 
-> 🇷🇺 Russian version: [`README.ru.md`](README.ru.md).
-
 ## Why
 
 When a task is underspecified — design, copy, refactoring with
