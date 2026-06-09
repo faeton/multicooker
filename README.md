@@ -10,6 +10,12 @@ You get a `leaderboard.md` plus a corpus of N divergent solutions
 to one brief. **No API bills**: it goes through your `Claude Pro`
 / `ChatGPT Plus` / `Gemini Advanced` / `SuperGrok` subscriptions.
 
+There's also a composite **`triad`** flavor — Claude as the lead
+engineer with Codex and Grok in the *same* container as in-cell
+reviewers it consults itself (build → review → integrate, multi-model
+review *inside* one build). Good as the chef/lead, not a blind
+competitor. See [`docs/add-flavor.md`](docs/add-flavor.md#composite-flavors-triad).
+
 > «multicooker»: one task, several dishes cook in parallel in
 > their own pots; you compare what came out of each.
 
