@@ -95,6 +95,27 @@ def render_compose(cook_dir: Path, cfg: dict,
             ),
         )
 
+    # Reviewers (consult phase) — second-opinion cells over one candidate.
+    # Structurally a judge cell, but its workdir lives under consult/ and it
+    # writes a review.md instead of scores. Injected into cfg by consult.py;
+    # absent on a normal cook/judge render.
+    for r in cfg.get("reviewers", []):
+        rname = r["name"]
+        flavor = r.get("flavor", rname)
+        net = f"net-reviewer-{rname}"
+        networks[net] = {"driver": "bridge"}
+        services[f"reviewer-{rname}"] = _reviewer_service(
+            cook_dir=cook_dir,
+            reviewer_name=rname,
+            flavor=flavor,
+            project=project,
+            network=net,
+            model=r.get("model"),
+            limits=_resolve_limits(
+                actor=r, top_resources=top_resources, profile=profile,
+            ),
+        )
+
     compose = {
         "name": project,
         "networks": networks,
@@ -306,6 +327,43 @@ def _participant_service(cook_dir: Path, participant_name: str,
         "volumes": volumes,
         # `up` will run the entrypoint baked into the image.
         # Don't restart on failure — we want a definitive exit.
+        "restart": "no",
+    }
+    _apply_hardening(service)
+    if limits is not None:
+        _apply_limits(service, limits)
+    return service
+
+
+def _reviewer_service(cook_dir: Path, reviewer_name: str, flavor: str,
+                      project: str, network: str,
+                      model: str | None = None,
+                      limits: dict | None = None) -> dict:
+    """A consult reviewer cell. Reuses the participant image (no separate
+    image needed) and mounts its own sealed workdir under consult/."""
+    cd = cook_dir.resolve()
+    image = f"{project}-{flavor}"
+    env = {
+        "MULTICOOKER_FLAVOR": flavor,
+        "MULTICOOKER_REVIEWER": reviewer_name,
+    }
+    if model:
+        env["MULTICOOKER_MODEL"] = model
+    service = {
+        "image": image,
+        "build": {
+            "context": str(cd / "participants" / flavor),
+            "dockerfile": "Dockerfile",
+        },
+        "container_name": f"{project}-reviewer-{reviewer_name}",
+        "working_dir": "/work",
+        "environment": env,
+        "networks": [network],
+        "volumes": [
+            f"{cd}/consult/_work-{reviewer_name}:/work:rw",
+            *_auth_volumes(flavor, cook_dir),
+            *_usage_volumes(flavor, cook_dir, "reviewer", reviewer_name),
+        ],
         "restart": "no",
     }
     _apply_hardening(service)

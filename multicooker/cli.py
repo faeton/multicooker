@@ -188,7 +188,32 @@ def main(argv: list[str] | None = None) -> int:
                        help="Override chef timeout seconds")
     pchef.add_argument("--model", default=None,
                        help="Optional model string for the chef actor")
+    pchef.add_argument("--consult", default=None,
+                       help="After the chef candidate, get a second opinion from "
+                            "these reviewer flavors (comma-separated, e.g. "
+                            "claude,grok), each in its own isolated cell")
+    pchef.add_argument("--refine", action="store_true",
+                       help="With --consult: run a chef refine pass on the "
+                            "reviews (default: write feedback and stop)")
     pchef.add_argument("--profile", choices=profile_choices, default=None,
+                       help=profile_help)
+
+    # consult
+    pcons = sub.add_parser(
+        "consult",
+        help="Get a second opinion on one candidate from isolated reviewer cells",
+    )
+    pcons.add_argument("name", help="Cook folder name")
+    pcons.add_argument("--root", default="cooks")
+    pcons.add_argument("--target", default=None,
+                       help="Participant whose out/ to review (default: "
+                            "leaderboard #1 / first participant)")
+    pcons.add_argument("--reviewers", default=None,
+                       help="Comma-separated reviewer flavors/specs (default: "
+                            "consult.reviewers or judges from brief.yaml)")
+    pcons.add_argument("--refine", action="store_true",
+                       help="Run a refine pass on the target after collecting reviews")
+    pcons.add_argument("--profile", choices=profile_choices, default=None,
                        help=profile_help)
 
     # diff
@@ -383,6 +408,17 @@ def main(argv: list[str] | None = None) -> int:
             timeout_s=args.timeout_s,
             profile_override=args.profile,
             model=args.model,
+            consult_reviewers=_csv(args.consult),
+            consult_refine=args.refine,
+        )
+    if args.cmd == "consult":
+        from .consult import consult
+        return consult(
+            name=args.name, root=Path(args.root),
+            target=args.target,
+            reviewers=_csv(args.reviewers),
+            refine=args.refine,
+            profile_override=args.profile,
         )
     if args.cmd == "diff":
         return diff_rounds(

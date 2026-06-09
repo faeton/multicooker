@@ -161,6 +161,16 @@ multicooker report <name>     # → cooks/<name>/leaderboard.md
   editing `JUDGE_BRIEF.md` or hand-fixing `out/`.
 - `multicooker diff <name>` — file-level diff between two refine
   rounds; sanity check that refine moved the needle.
+- `multicooker consult <name>` — second opinion on one candidate.
+  Spawns isolated reviewer cells (one per flavor, own
+  container/creds/network — a judge cell that critiques instead of
+  scoring), archives each `review.md` under `consult/<target>/`, and
+  folds them into `FEEDBACK.md` (idempotent block). `--target`
+  defaults to the leaderboard #1; `--reviewers` defaults to
+  `consult.reviewers` then the judges. `--refine` runs a refine pass
+  on the reviews. `chef --consult <flavors> [--refine]` chains this
+  after the chef candidate. Reviewers get their own token stats like
+  any cell.
 
 ## What participant containers see (you rarely need to touch this)
 

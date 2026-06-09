@@ -239,6 +239,8 @@ def chef(
     timeout_s: int | None = None,
     profile_override: str | None = None,
     model: str | None = None,
+    consult_reviewers: list[str] | None = None,
+    consult_refine: bool = False,
 ) -> int:
     cook_dir = root / name if not Path(name).is_absolute() else Path(name)
     if not cook_dir.exists():
@@ -433,5 +435,23 @@ def chef(
     print(f"[chef] {chef_name}: {status} (exit={res.exit_code}, {res.duration_s:.1f}s)")
     _print_usage_summary("chef", [{"name": chef_name, "usage": usage}])
     print(f"[chef] sealed chef work tree at {cook_dir}/judging/_inbox/{chef_name}/")
+
+    if consult_reviewers and status == "ok":
+        print(f"[chef] consulting reviewers {consult_reviewers} on '{chef_name}'...",
+              flush=True)
+        from .consult import consult
+        rc = consult(name, root, target=chef_name, reviewers=consult_reviewers,
+                     refine=consult_refine, profile_override=profile_override)
+        if consult_refine:
+            # --refine re-runs and RE-SEALS the chef, so the sealed inbox is now
+            # the refine result — propagate its exit code honestly.
+            return rc
+        # Review-only: the original chef candidate is untouched and still sealed,
+        # so a consult hiccup (no reviews, etc.) shouldn't fail the chef run.
+        if rc != 0:
+            print(f"[chef] consult returned {rc}; chef candidate is still sealed.",
+                  flush=True)
+        return 0
+
     print(f"[chef] next: multicooker rejudge {name}")
     return 0 if status == "ok" else 1

@@ -101,6 +101,8 @@ def usage_root(cook_dir: Path, cell_kind: str, name: str, flavor: str) -> Path:
         return cook_dir / "work" / name / "usage" / flavor
     if cell_kind == "judge":
         return cook_dir / "judging" / "_usage" / name / flavor
+    if cell_kind == "reviewer":
+        return cook_dir / "consult" / "_usage" / name / flavor
     raise ValueError(f"unknown cell kind: {cell_kind}")
 
 
