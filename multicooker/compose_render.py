@@ -249,7 +249,13 @@ def _auth_volumes(flavor: str, cook_dir: Path) -> list[str]:
     # Containers run as the `node` user (uid=1000); claude refuses
     # --dangerously-skip-permissions under root. So creds go in /home/node.
     if flavor == "claude":
-        return [f"{auth}/claude/:/home/node/.claude/:ro"]
+        # RW, not RO: claude writes /home/node/.claude/session-env at shell
+        # init (its Bash tool dies with EROFS otherwise) and rewrites the
+        # access token on refresh (~5h lifetime) — an RO mount makes the cell
+        # vulnerable to host-side token rotation (401 mid-cook). Like agy's
+        # .gemini, this is the cook-local snapshot (re-snapshotted each cook),
+        # so transient writes never leak back into the host's ~/.claude.
+        return [f"{auth}/claude/:/home/node/.claude/:rw"]
     if flavor == "codex":
         return [f"{auth}/codex/auth.json:/home/node/.codex/auth.json:ro"]
     if flavor == "grok":
@@ -268,9 +274,13 @@ def _auth_volumes(flavor: str, cook_dir: Path) -> list[str]:
     if flavor == "triad":
         # Claude lead + codex & grok reviewers in one cell: all three cred
         # sets, each at its own home path (no collision). See the triad branch
-        # in creds.snapshot.
+        # in creds.snapshot. Claude is RW for the same reason as the plain
+        # claude branch above — and here it is load-bearing: the lead invokes
+        # codex/grok through its Bash tool, which an RO .claude mount kills at
+        # shell init (EROFS on session-env), silently degrading the triad to a
+        # plain-claude cell with no review panel.
         return [
-            f"{auth}/claude/:/home/node/.claude/:ro",
+            f"{auth}/claude/:/home/node/.claude/:rw",
             f"{auth}/codex/auth.json:/home/node/.codex/auth.json:ro",
             f"{auth}/grok/auth.json:/home/node/.grok/auth.json:ro",
         ]
