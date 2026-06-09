@@ -87,6 +87,11 @@ agy --print "$PROMPT" --print-timeout 3600s \
 
 # grok
 grok -p "$PROMPT" --always-approve
+
+# triad (composite: claude drives, codex + grok are in-cell reviewers)
+# Same claude argv, but the entrypoint prepends a review protocol so the
+# lead consults `codex exec …` and `grok -p …` itself. See docs/add-flavor.md.
+claude --print "$REVIEW_PROTOCOL$PROMPT" --dangerously-skip-permissions --add-dir /work
 ```
 
 The prompt ALWAYS goes **before** `--add-dir` (claude), otherwise

@@ -123,7 +123,10 @@ def reset_usage_dir(cook_dir: Path, cell_kind: str, name: str, flavor: str) -> P
 def collect_usage(cook_dir: Path, cell_kind: str, name: str,
                   flavor: str) -> dict[str, Any] | None:
     root = usage_root(cook_dir, cell_kind, name, flavor)
-    if flavor == "claude":
+    if flavor == "claude" or flavor == "triad":
+        # triad's driver is claude; its session ledger lives under projects/,
+        # same as a plain claude cell. Reviewer (codex/grok) spend isn't summed
+        # into the status line — claude's driver tokens are the headline.
         return _collect_claude(root).to_dict(flavor, root)
     if flavor == "codex":
         return _collect_codex(root).to_dict(flavor, root)

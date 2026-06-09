@@ -265,6 +265,15 @@ def _auth_volumes(flavor: str, cook_dir: Path) -> list[str]:
         # re-snapshotted each cook so transient writes don't leak into the
         # host's ~/.gemini.
         return [f"{auth}/agy/:/home/node/.gemini/:rw"]
+    if flavor == "triad":
+        # Claude lead + codex & grok reviewers in one cell: all three cred
+        # sets, each at its own home path (no collision). See the triad branch
+        # in creds.snapshot.
+        return [
+            f"{auth}/claude/:/home/node/.claude/:ro",
+            f"{auth}/codex/auth.json:/home/node/.codex/auth.json:ro",
+            f"{auth}/grok/auth.json:/home/node/.grok/auth.json:ro",
+        ]
     if flavor == "dummy":
         # Smoke-test flavor — no creds, no auth mount.
         return []
@@ -280,6 +289,14 @@ def _usage_volumes(flavor: str, cook_dir: Path, cell_kind: str, name: str) -> li
         return [f"{root}/projects:/home/node/.claude/projects:rw"]
     if flavor == "codex":
         return [f"{root}/sessions:/home/node/.codex/sessions:rw"]
+    if flavor == "triad":
+        # Claude drives, so its session ledger is what status reports
+        # (metrics.collect_usage maps triad → the claude collector). Also
+        # capture codex's ledger so reviewer spend isn't invisible on disk.
+        return [
+            f"{root}/projects:/home/node/.claude/projects:rw",
+            f"{root}/sessions:/home/node/.codex/sessions:rw",
+        ]
     if flavor == "agy":
         # agy writes telemetry under ~/.gemini (legacy tmp/history plus its own
         # antigravity-cli/ state). Capture the legacy ledger dirs cook-local;

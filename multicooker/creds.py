@@ -217,6 +217,15 @@ def snapshot(cook_dir: Path, flavors: list[str]) -> Path:
                     _snapshot_claude_macos(auth_root)
                 else:
                     _snapshot_claude_linux(auth_root)
+            elif f == "triad":
+                # Claude lead + codex & grok reviewers share one cell — it
+                # needs all three cred sets (distinct subdirs, no collision).
+                if sys.platform == "darwin":
+                    _snapshot_claude_macos(auth_root)
+                else:
+                    _snapshot_claude_linux(auth_root)
+                _snapshot_codex(auth_root)
+                _snapshot_grok(auth_root)
             elif f == "dummy":
                 # Dummy flavor needs no creds — used for integration smoke
                 # tests without burning subscription credits.

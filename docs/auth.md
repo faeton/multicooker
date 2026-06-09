@@ -36,6 +36,12 @@ directly (essentially option A without the extraction step).
 `codex` and `grok` — simple RO bind-mount. `agy` and `claude` are
 trickier (Keychain on macOS).
 
+**Composite flavors** (e.g. `triad` = claude + codex + grok in one cell)
+snapshot **every** cred set their CLIs need — the `triad` branch in
+`creds.snapshot()` runs the claude + codex + grok snapshotters, which land in
+distinct `.auth/<cli>/` subdirs (no collision) and are mounted at each CLI's
+own home path. See [add-flavor.md § Composite flavors](add-flavor.md#composite-flavors-triad).
+
 ## codex — bind-mount
 
 In compose:

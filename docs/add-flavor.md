@@ -1,9 +1,15 @@
 # Adding a new flavor (CLI agent)
 
-Multicooker ships with `claude`, `codex`, `agy`, `grok`, and `dummy`.
-To add a new CLI agent (e.g. aider, cursor-cli, ollama-runner, a local
-binary) — follow this guide. ~10 minutes of copy-paste; most of the time
-will go into debugging your CLI's argv.
+Multicooker ships with `claude`, `codex`, `agy`, `grok`, `triad`, and
+`dummy`. To add a new CLI agent (e.g. aider, cursor-cli, ollama-runner, a
+local binary) — follow this guide. ~10 minutes of copy-paste; most of the
+time will go into debugging your CLI's argv.
+
+> **`triad` is a *composite* flavor** — Claude as the lead engineer with
+> Codex and Grok installed in the **same cell** as in-cell reviewers it
+> consults via Bash. It's the worked example for a flavor that bundles
+> several CLIs and several cred sets in one container. See
+> [§ Composite flavors](#composite-flavors-triad) below.
 
 ## What to decide up front
 
@@ -138,6 +144,47 @@ in schema, missing base). `cook` fails with a clear exit code if
   whose creds live in the OS keyring, bridged to a file by `_snapshot_agy`.
 - **Plain-file auth (`~/.<cli>/auth.json`)**: `codex` — the simplest
   example with `_snapshot_codex` in `creds.py`.
+
+## Composite flavors (`triad`)
+
+A *composite* flavor bundles several CLIs in one cell so one model can
+drive the others — e.g. `triad` runs **Claude as the lead engineer** with
+**Codex and Grok as in-cell reviewers** it calls over Bash. Claude
+orchestrates its own build → review → integrate loop; the reviewers never
+write to `out/`. Use this shape when you want multi-model review *inside* a
+single build rather than the turn-based `consult` loop between builds.
+
+What's different from a single-CLI flavor:
+
+1. **Base image installs all the CLIs** —
+   `templates/base/triad/Dockerfile` is the union of the
+   `mc-base-{claude,codex,grok}` install steps (npm `@anthropic-ai/claude-code`
+   + `@openai/codex`, then the grok install script), all running as `node`.
+2. **`creds.py` snapshots every cred set the cell needs.** The `triad`
+   branch in `snapshot()` calls `_snapshot_claude_* + _snapshot_codex +
+   _snapshot_grok`. They land in distinct subdirs (`.auth/claude`,
+   `.auth/codex`, `.auth/grok`) — no collision.
+3. **`compose_render._auth_volumes`** returns *all three* RO mounts
+   (`/home/node/.claude`, `.codex/auth.json`, `.grok/auth.json`).
+   `_usage_volumes` mounts the driver's ledger (claude `projects/`) plus
+   codex `sessions/`.
+4. **`metrics.collect_usage`** maps the composite to its **driver's**
+   collector (`triad → _collect_claude`), so the status line reports the
+   lead's tokens. Reviewer spend isn't summed into the headline.
+5. **The entrypoint hands the driver a review protocol.**
+   `templates/cook/participants/triad/entrypoint.sh` prepends a short "you
+   are the lead; here are your reviewer CLIs and how to call them" preamble
+   to `PROMPT.txt` before invoking `claude --print`. Judge mode
+   (`MULTICOOKER_JUDGE`) skips the preamble and scores plainly.
+
+Everything else (schema, base-image autodiscovery, `add-participant`) is
+identical to a normal flavor: `base_images` finds
+`templates/base/triad/Dockerfile` automatically; attach it to a cook with
+`multicooker add-participant <cook> lead=triad`.
+
+Cost note: a composite cell spends ~N× the tokens (one per model in the
+loop) and runs slower — it's the "slow but thorough" lead, not a cheap
+competitor. Keep it as the chef/lead, not one of the blind-judged field.
 
 ## What NOT to do
 
